@@ -147,6 +147,20 @@
   .seg button{flex:1;background:transparent;color:var(--muted);border:none;padding:6px 0;font-size:11px;font-weight:600;}
   .seg button.active{background:var(--accent);color:#0a0b0f;}
   .checkrow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);}
+
+  /* Password lock screen */
+  #lockScreen{position:fixed;inset:0;background:var(--bg);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;}
+  #lockScreen.hidden{display:none;}
+  .lock-card{background:var(--panel);border:1px solid var(--border2);border-radius:8px;padding:30px;width:100%;max-width:360px;}
+  .lock-card .logo-tri{margin:0 auto 16px;}
+  .lock-card h2{text-align:center;margin:0 0 4px;font-size:17px;color:var(--text2);}
+  .lock-card .lock-sub{text-align:center;color:var(--muted);font-size:12px;margin-bottom:20px;}
+  .lock-card .field{margin-bottom:12px;}
+  .lock-card button.primary{width:100%;padding:10px;font-size:13px;}
+  .lock-err{color:var(--red);font-size:12px;margin-top:8px;text-align:center;min-height:16px;}
+  .lock-reset{text-align:center;margin-top:14px;}
+  .lock-reset a{color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline;}
+  .user-status{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -182,22 +196,37 @@
         </div>
       </div>
     </div>
-    <div class="display-toggle">
-      <button class="ghost" id="userBtn" onclick="toggleUserPop()">SIGN IN</button>
-      <div class="display-pop" id="userPop">
-        <div class="row">
-          <div class="row-label">Your Email</div>
-          <input type="text" id="userEmailInput" placeholder="you@email.com" style="margin-bottom:10px;">
-          <button class="primary" style="width:100%;" onclick="saveUserEmail()">Save</button>
-        </div>
-        <div class="row" id="signOutRow" style="display:none;margin-bottom:0;">
-          <button class="secondary" style="width:100%;" onclick="signOutUser()">Sign Out</button>
-        </div>
-        <div class="hint" style="margin-top:10px;">Just a local label — no account, no password, nothing leaves this browser.</div>
-      </div>
+    <div class="user-status">
+      <span id="loggedInEmail"></span>
+      <button class="ghost" onclick="lockDashboard()">🔒 LOCK</button>
     </div>
   </div>
 </header>
+
+<!-- Password lock screen -->
+<div id="lockScreen">
+  <div class="lock-card">
+    <div class="logo-tri"></div>
+    <h2 id="lockTitle">Protected</h2>
+    <div class="lock-sub" id="lockSub"></div>
+
+    <div id="setupForm">
+      <div class="field"><label>Email</label><input type="text" id="setup_email" placeholder="you@email.com"></div>
+      <div class="field"><label>Password</label><input type="text" id="setup_pass" placeholder="Choose a password"></div>
+      <div class="field"><label>Confirm Password</label><input type="text" id="setup_pass2" placeholder="Re-enter password"></div>
+      <button class="primary" onclick="setupAccess()">Set Up Access</button>
+      <div class="lock-err" id="setupErr"></div>
+    </div>
+
+    <div id="unlockForm" style="display:none;">
+      <div class="field"><label>Email</label><input type="text" id="unlock_email" placeholder="you@email.com"></div>
+      <div class="field"><label>Password</label><input type="text" id="unlock_pass" placeholder="Password"></div>
+      <button class="primary" onclick="unlockAccess()">Unlock</button>
+      <div class="lock-err" id="unlockErr"></div>
+      <div class="lock-reset"><a onclick="resetAccess()">Forgot password? Reset access</a></div>
+    </div>
+  </div>
+</div>
 
 <main>
   <div class="stats" id="stats"></div>
@@ -350,21 +379,16 @@ const DEFAULT_DATA = [];
 
 const STORAGE_KEY = 'trigon_triangle_data_v1';
 const PREFS_KEY = 'trigon_triangle_prefs_v1';
-const USER_KEY = 'trigon_triangle_user_v1';
+const AUTH_KEY = 'trigon_triangle_auth_v1';
 const ACCENTS = ['#ff6a3d','#3ea6ff','#2ecc9a','#f6b93b'];
 let rows = [];
 let prefs = { accent:'#ff6a3d', density:'comfortable', showThumbs:true };
-let userInfo = { email:'' };
 let equityChart = null;
 let currentBreakdown = 'triangleType';
 let currentReplayIdx = null;
 let editState = { idx:null };
 
 function loadState(){
-  try{
-    const u = JSON.parse(localStorage.getItem(USER_KEY));
-    if(u) userInfo = Object.assign(userInfo, u);
-  }catch(e){}
   try{
     const cached = JSON.parse(localStorage.getItem(STORAGE_KEY));
     rows = (cached && cached.length) ? cached : DEFAULT_DATA;
@@ -373,6 +397,99 @@ function loadState(){
     const p = JSON.parse(localStorage.getItem(PREFS_KEY));
     if(p) prefs = Object.assign(prefs, p);
   }catch(e){}
+}
+
+/* ===================== Password lock screen ===================== *
+ * Honest caveat: this is a client-side-only gate. It stops casual visitors
+ * from opening/using the dashboard on a shared link or shared computer, but
+ * it is NOT real security — anyone who reads the page source or browser
+ * storage could bypass it. Don't rely on this to protect truly sensitive data. */
+async function sha256(str){
+  try{
+    if(crypto && crypto.subtle && crypto.subtle.digest){
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+  }catch(e){ /* fall through to non-crypto fallback below */ }
+  // Fallback for contexts where Web Crypto isn't available (e.g. some file:// setups).
+  // Weaker than SHA-256, but keeps the feature working rather than breaking entirely.
+  let h1 = 0xdeadbeef ^ str.length, h2 = 0x41c6ce57 ^ str.length;
+  for(let i=0;i<str.length;i++){
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1>>>16), 2246822507) ^ Math.imul(h2 ^ (h2>>>13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2>>>16), 2246822507) ^ Math.imul(h1 ^ (h1>>>13), 3266489909);
+  return (h1>>>0).toString(16).padStart(8,'0') + (h2>>>0).toString(16).padStart(8,'0');
+}
+function getAuth(){ try{ return JSON.parse(localStorage.getItem(AUTH_KEY)); }catch(e){ return null; } }
+
+function initLockScreen(){
+  const auth = getAuth();
+  if(auth && auth.email && auth.passHash){
+    document.getElementById('lockTitle').textContent = 'Welcome back';
+    document.getElementById('lockSub').textContent = 'Enter your password to continue.';
+    document.getElementById('unlock_email').value = auth.email;
+    document.getElementById('setupForm').style.display = 'none';
+    document.getElementById('unlockForm').style.display = 'block';
+  } else {
+    document.getElementById('lockTitle').textContent = 'Protect this dashboard';
+    document.getElementById('lockSub').textContent = 'Set an email + password. You\'ll need them every time you open this page.';
+    document.getElementById('setupForm').style.display = 'block';
+    document.getElementById('unlockForm').style.display = 'none';
+  }
+}
+
+async function setupAccess(){
+  const email = document.getElementById('setup_email').value.trim();
+  const pass = document.getElementById('setup_pass').value;
+  const pass2 = document.getElementById('setup_pass2').value;
+  const err = document.getElementById('setupErr');
+  err.textContent = '';
+  if(!email || !pass){ err.textContent = 'Email and password are required.'; return; }
+  if(pass.length < 4){ err.textContent = 'Use at least 4 characters.'; return; }
+  if(pass !== pass2){ err.textContent = 'Passwords don\'t match.'; return; }
+  const passHash = await sha256(pass);
+  localStorage.setItem(AUTH_KEY, JSON.stringify({ email, passHash }));
+  unlockDashboard(email);
+}
+
+async function unlockAccess(){
+  const email = document.getElementById('unlock_email').value.trim();
+  const pass = document.getElementById('unlock_pass').value;
+  const err = document.getElementById('unlockErr');
+  err.textContent = '';
+  const auth = getAuth();
+  if(!auth){ initLockScreen(); return; }
+  const passHash = await sha256(pass);
+  if(email === auth.email && passHash === auth.passHash){
+    unlockDashboard(email);
+  } else {
+    err.textContent = 'Wrong email or password.';
+  }
+}
+
+function resetAccess(){
+  if(!confirm('This clears the saved email/password on this browser so you can set a new one. (It does NOT delete your trade data.) Continue?')) return;
+  localStorage.removeItem(AUTH_KEY);
+  document.getElementById('unlock_pass').value = '';
+  initLockScreen();
+}
+
+function unlockDashboard(email){
+  document.getElementById('lockScreen').classList.add('hidden');
+  document.getElementById('loggedInEmail').textContent = email;
+  loadState();
+  renderDisplayControls();
+  refreshAll();
+}
+
+function lockDashboard(){
+  document.getElementById('unlock_pass').value = '';
+  document.getElementById('unlockErr').textContent = '';
+  initLockScreen();
+  document.getElementById('lockScreen').classList.remove('hidden');
 }
 function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); }
 function persistPrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
@@ -393,37 +510,6 @@ document.addEventListener('click', (e)=>{
   });
 });
 
-/* ===================== Sign in (local email label only — no real auth, nothing leaves the browser) ===================== */
-function toggleUserPop(){
-  document.getElementById('userEmailInput').value = userInfo.email || '';
-  document.getElementById('userPop').classList.toggle('open');
-}
-function renderUserBadge(){
-  const btn = document.getElementById('userBtn');
-  const signOutRow = document.getElementById('signOutRow');
-  if(userInfo.email){
-    btn.textContent = userInfo.email.toUpperCase();
-    signOutRow.style.display = 'block';
-  } else {
-    btn.textContent = 'SIGN IN';
-    signOutRow.style.display = 'none';
-  }
-}
-function saveUserEmail(){
-  const val = document.getElementById('userEmailInput').value.trim();
-  if(!val){ alert('Enter an email first.'); return; }
-  if(!/^\S+@\S+\.\S+$/.test(val)){ if(!confirm('That doesn\'t look like a valid email — save it anyway?')) return; }
-  userInfo.email = val;
-  localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
-  renderUserBadge();
-  document.getElementById('userPop').classList.remove('open');
-}
-function signOutUser(){
-  userInfo.email = '';
-  localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
-  renderUserBadge();
-  document.getElementById('userPop').classList.remove('open');
-}
 
 function renderDisplayControls(){
   const swatchRow = document.getElementById('swatchRow');
@@ -937,10 +1023,7 @@ function refreshAll(){
   renderBreakdown();
   renderTable();
 }
-loadState();
-renderDisplayControls();
-renderUserBadge();
-refreshAll();
+initLockScreen();
 </script>
 </body>
 </html>
