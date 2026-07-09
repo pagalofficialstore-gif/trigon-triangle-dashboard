@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trigon Triangle — Strategy Accuracy Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0b0f; --panel:#14161c; --panel2:#1b1e26; --headerbg:#0d0f14;
+    --border:#23262f; --border2:#262a34;
+    --text:#edeef2; --text2:#f4f5f7; --muted:#767e8f;
+    --accent:#ff6a3d; --green:#34d399; --red:#fb5a75; --amber:#f6b93b;
+    --row-pad-v:11px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;}
+  ::selection{background:rgba(255,106,61,.35);}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:#12141a;}
+  ::-webkit-scrollbar-thumb{background:#2a2e39;border-radius:6px;}
+  @keyframes tg-spin{to{transform:rotate(360deg);}}
+  @keyframes tg-rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 28px;border-bottom:1px solid var(--border);background:var(--headerbg);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
+  .logo-tri{width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:22px solid var(--accent);flex-shrink:0;}
+  header h1{font-size:19px;font-weight:700;margin:0;letter-spacing:.02em;color:var(--text2);}
+  header .sub{color:var(--muted);font-size:11px;margin-top:3px;letter-spacing:.03em;}
+  .btns{display:flex;gap:10px;align-items:center;flex-wrap:wrap;position:relative;}
+  button{font-family:'JetBrains Mono',monospace;letter-spacing:.03em;cursor:pointer;border-radius:3px;font-weight:700;font-size:12px;}
+  button.primary{background:var(--accent);color:#0a0b0f;border:none;padding:10px 16px;}
+  button.secondary{background:transparent;color:#c7cbd4;border:1px solid var(--border2);padding:10px 16px;font-weight:600;}
+  button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--border2);padding:9px 15px;font-weight:600;}
+  button:hover{filter:brightness(1.12);}
+  button:disabled{opacity:.5;cursor:not-allowed;}
+
+  main{padding:24px 28px 60px;max-width:1360px;margin:0 auto;}
+
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:22px;}
+  .stat{background:var(--panel);border:1px solid var(--border);border-top:2px solid var(--muted);border-radius:4px;padding:14px 18px;}
+  .stat .v{font-size:23px;font-weight:700;}
+  .stat .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:5px;}
+
+  .grid2{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin-bottom:22px;}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:18px;min-width:0;}
+  .card h3{margin:0 0 14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
+
+  .tabs{display:flex;gap:6px;margin-bottom:14px;}
+  .tabs button{padding:6px 12px;font-size:11px;border:1px solid var(--border2);background:transparent;color:var(--muted);}
+  .tabs button.active{background:var(--accent);color:#0a0b0f;border-color:var(--accent);}
+  .breakdown-row{display:flex;align-items:center;gap:10px;margin-bottom:11px;font-size:12px;}
+  .breakdown-row .name{width:96px;flex-shrink:0;color:#dfe2e8;}
+  .breakdown-row .bar-wrap{flex:1;background:var(--panel2);border-radius:3px;height:16px;overflow:hidden;}
+  .breakdown-row .bar{height:100%;border-radius:3px;}
+  .breakdown-row .meta{width:158px;flex-shrink:0;color:var(--muted);font-size:10.5px;text-align:right;}
+
+  .filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .filters select{background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:3px;font-size:12px;font-family:'JetBrains Mono',monospace;}
+
+  .table-wrap{background:var(--panel);border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+  table{width:100%;border-collapse:collapse;}
+  th{padding:11px 14px;text-align:left;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700;border-bottom:1px solid var(--border);background:#181b22;}
+  td{padding:var(--row-pad-v) 14px;font-size:12.5px;border-bottom:1px solid #1e212a;}
+  tr.trow{cursor:pointer;}
+  tr.trow:hover td{background:#181b22;}
+  .col-chart.hide-thumbs{display:none;}
+  .pill{display:inline-block;padding:2px 10px;border-radius:20px;font-size:10.5px;font-weight:700;}
+  .pill.win{background:rgba(52,211,153,.15);color:var(--green);}
+  .pill.loss{background:rgba(251,90,117,.15);color:var(--red);}
+  .pill.open{background:rgba(246,185,59,.15);color:var(--amber);}
+  .r-pos{color:var(--green);font-weight:700;}
+  .r-neg{color:var(--red);font-weight:700;}
+  .thumb{width:70px;height:44px;object-fit:cover;border-radius:3px;border:1px solid var(--border2);background:var(--panel2);display:block;}
+  .thumb-fallback{width:70px;height:44px;border-radius:3px;border:1px solid var(--border2);background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:9.5px;color:var(--muted);}
+  .empty{padding:44px;text-align:center;color:var(--muted);font-size:13px;}
+
+  .card-list{display:none;flex-direction:column;gap:10px;}
+  .trade-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:14px;cursor:pointer;}
+  .trade-card .top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
+  .trade-card .ttype{font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:var(--text2);}
+  .trade-card .meta{font-size:11px;color:var(--muted);margin-top:2px;}
+  .trade-card .bottom{display:flex;justify-content:space-between;align-items:center;}
+  .trade-card .cond{font-size:12px;color:#c7cbd4;}
+
+  @media (max-width:720px){
+    header{flex-direction:column;align-items:stretch;padding:16px 18px;}
+    .btns{width:100%;}
+    .btns button{width:100%;}
+    main{padding:18px 16px 40px;}
+    .stats{grid-template-columns:repeat(2,1fr);}
+    .grid2{grid-template-columns:1fr;}
+    .filters{flex-direction:column;}
+    .filters select{width:100%;}
+    .table-wrap{display:none;}
+    .card-list{display:flex;}
+    .modal{padding:18px;}
+    .modal-overlay{padding:14px 10px;}
+    .form-grid{grid-template-columns:1fr;}
+  }
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:flex-start;justify-content:center;z-index:50;overflow-y:auto;padding:36px 16px;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border2);border-radius:6px;width:100%;max-width:720px;padding:26px;animation:tg-rise .18s ease;}
+  .modal .top-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
+  .modal h2{margin:0;font-size:16px;color:var(--text2);}
+  .modal .close{background:transparent;color:var(--muted);border:none;font-size:20px;cursor:pointer;padding:0;line-height:1;font-weight:400;}
+  label{display:block;font-size:11px;color:var(--muted);margin-bottom:5px;}
+  input[type=text],input[type=number],input[type=date]{
+    width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);
+    padding:9px 11px;border-radius:3px;font-size:13px;font-family:inherit;
+  }
+  select{background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:8px 10px;border-radius:3px;font-size:13px;font-family:inherit;width:100%;}
+  .field{margin-bottom:12px;}
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
+  .form-grid .full{grid-column:1/-1;font-size:12px;color:var(--muted);}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .badge-detected{font-size:10px;color:var(--accent);margin-left:4px;}
+
+  .analyzer-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);margin:12px 0;min-height:18px;}
+  .spinner{width:14px;height:14px;border-radius:50%;border:2px solid var(--border2);border-top-color:var(--accent);animation:tg-spin .8s linear infinite;flex-shrink:0;display:none;}
+  .spinner.on{display:inline-block;}
+  .ocr-raw{max-height:100px;overflow-y:auto;background:var(--panel2);border:1px solid var(--border2);border-radius:5px;padding:9px 11px;font-size:11px;color:var(--muted);white-space:pre-wrap;margin-top:6px;display:none;}
+  .replay-img-wrap{border-radius:6px;overflow:hidden;border:1px solid var(--border2);background:var(--panel2);text-align:center;margin-bottom:8px;}
+  .replay-img-wrap img{width:100%;display:block;}
+  .replay-img-fallback{padding:50px 20px;color:var(--muted);font-size:13px;}
+  .replay-meta{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;}
+  .replay-meta div span.l{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .hint{font-size:11px;color:var(--muted);margin-top:8px;}
+  a.link{color:var(--accent);text-decoration:none;}
+
+  /* Display settings popover */
+  .display-toggle{position:relative;}
+  .display-pop{position:absolute;top:calc(100% + 8px);right:0;background:var(--panel);border:1px solid var(--border2);border-radius:6px;padding:16px;width:230px;display:none;z-index:20;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  .display-pop.open{display:block;}
+  .display-pop .row{margin-bottom:14px;}
+  .display-pop .row:last-child{margin-bottom:0;}
+  .display-pop .row-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;}
+  .swatches{display:flex;gap:8px;}
+  .swatch{width:26px;height:26px;border-radius:50%;cursor:pointer;border:2px solid transparent;}
+  .swatch.active{border-color:var(--text);}
+  .seg{display:flex;border:1px solid var(--border2);border-radius:3px;overflow:hidden;}
+  .seg button{flex:1;background:transparent;color:var(--muted);border:none;padding:6px 0;font-size:11px;font-weight:600;}
+  .seg button.active{background:var(--accent);color:#0a0b0f;}
+  .checkrow{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text);}
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="logo-tri"></div>
+    <div>
+      <h1>TRIGON TRIANGLE</h1>
+      <div class="sub" id="headerSub">STRATEGY ACCURACY DASHBOARD</div>
+    </div>
+  </div>
+  <div class="btns">
+    <button class="primary" onclick="openChartAnalyzer()">+ ADD SETUP FROM CHART LINK</button>
+    <button class="secondary" onclick="document.getElementById('fileInput').click()">LOAD / UPDATE SPREADSHEET</button>
+    <input id="fileInput" type="file" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileUpload(event)">
+    <div class="display-toggle">
+      <button class="ghost" onclick="toggleDisplayPop()">DISPLAY ⚙</button>
+      <div class="display-pop" id="displayPop">
+        <div class="row">
+          <div class="row-label">Accent Color</div>
+          <div class="swatches" id="swatchRow"></div>
+        </div>
+        <div class="row">
+          <div class="row-label">Table Density</div>
+          <div class="seg">
+            <button id="densComfortBtn" onclick="setDensity('comfortable')">Comfortable</button>
+            <button id="densCompactBtn" onclick="setDensity('compact')">Compact</button>
+          </div>
+        </div>
+        <div class="row">
+          <label class="checkrow"><input type="checkbox" id="thumbToggle" onchange="setThumbs(this.checked)"> Show chart thumbnails</label>
+        </div>
+      </div>
+    </div>
+    <div class="display-toggle">
+      <button class="ghost" id="userBtn" onclick="toggleUserPop()">SIGN IN</button>
+      <div class="display-pop" id="userPop">
+        <div class="row">
+          <div class="row-label">Your Email</div>
+          <input type="text" id="userEmailInput" placeholder="you@email.com" style="margin-bottom:10px;">
+          <button class="primary" style="width:100%;" onclick="saveUserEmail()">Save</button>
+        </div>
+        <div class="row" id="signOutRow" style="display:none;margin-bottom:0;">
+          <button class="secondary" style="width:100%;" onclick="signOutUser()">Sign Out</button>
+        </div>
+        <div class="hint" style="margin-top:10px;">Just a local label — no account, no password, nothing leaves this browser.</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="stats" id="stats"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Equity Curve (cumulative R)</h3>
+      <canvas id="equityChart" height="170"></canvas>
+    </div>
+    <div class="card">
+      <h3>Accuracy Breakdown</h3>
+      <div class="tabs">
+        <button class="active" onclick="switchBreakdown('triangleType', this)">TYPE</button>
+        <button onclick="switchBreakdown('condition', this)">CONDITION</button>
+        <button onclick="switchBreakdown('timeframe', this)">TIMEFRAME</button>
+      </div>
+      <div id="breakdownPanel"></div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <select id="filterType" onchange="renderTable()"><option value="">All triangle types</option></select>
+    <select id="filterCondition" onchange="renderTable()"><option value="">All conditions</option></select>
+    <select id="filterTimeframe" onchange="renderTable()"><option value="">All timeframes</option></select>
+    <select id="filterOutcome" onchange="renderTable()">
+      <option value="">All outcomes</option>
+      <option value="win">Win (TP)</option>
+      <option value="loss">Loss (SL)</option>
+      <option value="open">Open / Pending</option>
+    </select>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Timeframe</th><th>Triangle Type</th><th>Condition</th><th>Outcome</th><th>R</th><th class="col-chart">Chart</th></tr>
+      </thead>
+      <tbody id="tradeBody"></tbody>
+    </table>
+    <div id="emptyState" class="empty" style="display:none;">No setups match these filters.</div>
+  </div>
+
+  <div class="card-list" id="cardList"></div>
+  <div id="emptyStateMobile" class="empty" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:6px;">No setups match these filters.</div>
+</main>
+
+<!-- Add Setup from Chart Link modal -->
+<div class="modal-overlay" id="analyzerModalOverlay">
+  <div class="modal">
+    <div class="top-row">
+      <h2>Add Setup from Chart Link</h2>
+      <button class="close" onclick="closeAnalyzer()">&times;</button>
+    </div>
+    <div class="field">
+      <label>TradingView chart link (e.g. https://www.tradingview.com/x/CODE/)</label>
+      <input type="text" id="a_link" placeholder="Paste the chart snapshot link">
+    </div>
+    <button class="ghost" onclick="analyzeChart()">Fetch &amp; Analyze</button>
+    <div class="analyzer-status" id="a_status"><div class="spinner" id="a_spinner"></div><span id="a_statusText"></span></div>
+    <div class="replay-img-wrap" id="a_imgWrap" style="display:none;"></div>
+    <div class="ocr-raw" id="a_ocrRaw"></div>
+
+    <div class="analyzer-form" id="a_form" style="display:none;">
+      <div class="form-grid">
+        <div class="field"><label>Date</label><input type="date" id="a_date"></div>
+        <div class="field"><label>Timeframe<span class="badge-detected" id="a_tfBadge"></span></label><input type="text" id="a_timeframe" placeholder="e.g. 5 MIN" list="tfList"><datalist id="tfList"><option value="1 MIN"><option value="3 MIN"><option value="5 MIN"><option value="15 MIN"><option value="30 MIN"><option value="1H"></datalist></div>
+        <div class="field"><label>Triangle Type</label>
+          <select id="a_triangleType"><option value="">Select...</option><option>Triangle 1</option><option>Triangle 2</option><option>Triangle 3</option><option>Triangle 4</option></select>
+        </div>
+        <div class="field"><label>Condition</label>
+          <select id="a_condition"><option value="">Select...</option><option>CONDITION 1</option><option>CONDITION 2</option><option>CONDITION 3</option></select>
+        </div>
+        <div class="field"><label>Outcome</label>
+          <select id="a_outcome" onchange="onOutcomeChange()">
+            <option value="open">Open / Pending</option>
+            <option value="win">Win (TP Hit)</option>
+            <option value="loss">Loss (SL Hit)</option>
+          </select>
+        </div>
+        <div class="field"><label>R multiple<span class="badge-detected" id="a_rBadge"></span></label><input type="number" step="any" id="a_r" placeholder="e.g. 3"></div>
+        <div class="field full" id="a_detectedInfo"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary" onclick="closeAnalyzer()">Cancel</button>
+        <button class="primary" onclick="addAnalyzedSetup()">Add to Journal</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Replay / Setup detail modal -->
+<div class="modal-overlay" id="replayModalOverlay">
+  <div class="modal">
+    <div class="top-row">
+      <h2 id="replayTitle">Setup Detail</h2>
+      <button class="close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="replay-meta" id="replayMeta"></div>
+    <div class="replay-img-wrap" id="replayImgWrap"></div>
+    <div class="hint" id="replayLinkWrap"></div>
+    <div class="modal-footer">
+      <button class="secondary" onclick="deleteEntry()">Delete</button>
+      <button class="primary" onclick="openEditFromReplay()">Edit Entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Setup modal -->
+<div class="modal-overlay" id="editModalOverlay">
+  <div class="modal">
+    <div class="top-row">
+      <h2>Edit Setup</h2>
+      <button class="close" onclick="closeEditModal()">&times;</button>
+    </div>
+    <div class="replay-img-wrap" id="e_imgWrap"></div>
+    <div class="form-grid">
+      <div class="field"><label>Date</label><input type="date" id="e_date"></div>
+      <div class="field"><label>Timeframe</label><input type="text" id="e_timeframe" placeholder="e.g. 5 MIN" list="tfList"></div>
+      <div class="field"><label>Triangle Type</label>
+        <select id="e_triangleType"><option value="">Select...</option><option>Triangle 1</option><option>Triangle 2</option><option>Triangle 3</option><option>Triangle 4</option></select>
+      </div>
+      <div class="field"><label>Condition</label>
+        <select id="e_condition"><option value="">Select...</option><option>CONDITION 1</option><option>CONDITION 2</option><option>CONDITION 3</option></select>
+      </div>
+      <div class="field"><label>Outcome</label>
+        <select id="e_outcome" onchange="onEditOutcomeChange()">
+          <option value="open">Open / Pending</option>
+          <option value="win">Win (TP Hit)</option>
+          <option value="loss">Loss (SL Hit)</option>
+        </select>
+      </div>
+      <div class="field"><label>R multiple</label><input type="number" step="any" id="e_r" placeholder="e.g. 3"></div>
+      <div class="field full"><label>Chart Link</label><input type="text" id="e_link" placeholder="https://www.tradingview.com/x/CODE/"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="secondary" onclick="closeEditModal()">Cancel</button>
+      <button class="primary" onclick="saveEditedSetup()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===================== Starting dataset =====================
+   This published build starts EMPTY on purpose — this repo/page is public,
+   so no personal trade data is baked into the source. Load your own data via
+   "Load / Update Spreadsheet" (xlsx/csv) or "Add Setup from Chart Link".
+   Everything you add is stored only in your own browser's localStorage on
+   this domain — nobody else who visits this URL sees your data. */
+const DEFAULT_DATA = [];
+
+const STORAGE_KEY = 'trigon_triangle_data_v1';
+const PREFS_KEY = 'trigon_triangle_prefs_v1';
+const USER_KEY = 'trigon_triangle_user_v1';
+const ACCENTS = ['#ff6a3d','#3ea6ff','#2ecc9a','#f6b93b'];
+let rows = [];
+let prefs = { accent:'#ff6a3d', density:'comfortable', showThumbs:true };
+let userInfo = { email:'' };
+let equityChart = null;
+let currentBreakdown = 'triangleType';
+let currentReplayIdx = null;
+let editState = { idx:null };
+
+function loadState(){
+  try{
+    const u = JSON.parse(localStorage.getItem(USER_KEY));
+    if(u) userInfo = Object.assign(userInfo, u);
+  }catch(e){}
+  try{
+    const cached = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    rows = (cached && cached.length) ? cached : DEFAULT_DATA;
+  }catch(e){ rows = DEFAULT_DATA; }
+  try{
+    const p = JSON.parse(localStorage.getItem(PREFS_KEY));
+    if(p) prefs = Object.assign(prefs, p);
+  }catch(e){}
+}
+function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); }
+function persistPrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
+
+function imageUrlFor(code){
+  if(!code) return null;
+  return `https://s3.tradingview.com/snapshots/${code[0]}/${code}.png`;
+}
+
+/* ===================== Display settings (accent / density / thumbnails) ===================== */
+function toggleDisplayPop(){ document.getElementById('displayPop').classList.toggle('open'); }
+document.addEventListener('click', (e)=>{
+  document.querySelectorAll('.display-toggle').forEach(wrap=>{
+    if(!wrap.contains(e.target)){
+      const pop = wrap.querySelector('.display-pop');
+      if(pop) pop.classList.remove('open');
+    }
+  });
+});
+
+/* ===================== Sign in (local email label only — no real auth, nothing leaves the browser) ===================== */
+function toggleUserPop(){
+  document.getElementById('userEmailInput').value = userInfo.email || '';
+  document.getElementById('userPop').classList.toggle('open');
+}
+function renderUserBadge(){
+  const btn = document.getElementById('userBtn');
+  const signOutRow = document.getElementById('signOutRow');
+  if(userInfo.email){
+    btn.textContent = userInfo.email.toUpperCase();
+    signOutRow.style.display = 'block';
+  } else {
+    btn.textContent = 'SIGN IN';
+    signOutRow.style.display = 'none';
+  }
+}
+function saveUserEmail(){
+  const val = document.getElementById('userEmailInput').value.trim();
+  if(!val){ alert('Enter an email first.'); return; }
+  if(!/^\S+@\S+\.\S+$/.test(val)){ if(!confirm('That doesn\'t look like a valid email — save it anyway?')) return; }
+  userInfo.email = val;
+  localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
+  renderUserBadge();
+  document.getElementById('userPop').classList.remove('open');
+}
+function signOutUser(){
+  userInfo.email = '';
+  localStorage.setItem(USER_KEY, JSON.stringify(userInfo));
+  renderUserBadge();
+  document.getElementById('userPop').classList.remove('open');
+}
+
+function renderDisplayControls(){
+  const swatchRow = document.getElementById('swatchRow');
+  swatchRow.innerHTML = ACCENTS.map(c=>`<div class="swatch ${c===prefs.accent?'active':''}" style="background:${c}" onclick="setAccent('${c}')"></div>`).join('');
+  document.getElementById('densComfortBtn').classList.toggle('active', prefs.density==='comfortable');
+  document.getElementById('densCompactBtn').classList.toggle('active', prefs.density==='compact');
+  document.getElementById('thumbToggle').checked = prefs.showThumbs;
+  applyPrefsToDom();
+}
+function setAccent(c){ prefs.accent = c; persistPrefs(); renderDisplayControls(); renderEquityChart(); renderBreakdown(); }
+function setDensity(d){ prefs.density = d; persistPrefs(); renderDisplayControls(); }
+function setThumbs(v){ prefs.showThumbs = v; persistPrefs(); applyPrefsToDom(); }
+function applyPrefsToDom(){
+  document.documentElement.style.setProperty('--accent', prefs.accent);
+  document.documentElement.style.setProperty('--row-pad-v', prefs.density==='compact' ? '6px' : '11px');
+  document.querySelectorAll('.col-chart').forEach(el=> el.classList.toggle('hide-thumbs', !prefs.showThumbs));
+}
+
+/* ===================== Stats ===================== */
+function computeStats(data){
+  const resolved = data.filter(r=>r.outcome==='win'||r.outcome==='loss');
+  const wins = data.filter(r=>r.outcome==='win').length;
+  const losses = data.filter(r=>r.outcome==='loss').length;
+  const open = data.filter(r=>r.outcome==='open').length;
+  const winRate = resolved.length ? (wins/resolved.length*100) : 0;
+  const rs = resolved.map(r=>r.r).filter(v=>v!==null && v!==undefined && !isNaN(v));
+  const expectancy = rs.length ? rs.reduce((a,b)=>a+b,0)/rs.length : 0;
+  const totalR = rs.reduce((a,b)=>a+b,0);
+  return { total: data.length, wins, losses, open, winRate, expectancy, totalR };
+}
+
+function renderStats(){
+  const s = computeStats(rows);
+  document.getElementById('headerSub').textContent = `STRATEGY ACCURACY DASHBOARD · ${s.total} SETUPS LOGGED`;
+  const winColor = s.winRate>=50 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('stats').innerHTML = `
+    <div class="stat" style="border-top-color:#3a3f4a;"><div class="v">${s.total}</div><div class="l">Total Setups</div></div>
+    <div class="stat" style="border-top-color:${winColor}"><div class="v" style="color:${winColor}">${s.winRate.toFixed(1)}%</div><div class="l">Win Rate (${s.wins}W / ${s.losses}L)</div></div>
+    <div class="stat" style="border-top-color:var(--accent)"><div class="v">${s.expectancy>=0?'+':''}${s.expectancy.toFixed(2)}R</div><div class="l">Expectancy / Trade</div></div>
+    <div class="stat" style="border-top-color:${s.totalR>=0?'var(--green)':'var(--red)'}"><div class="v" style="color:${s.totalR>=0?'var(--green)':'var(--red)'}">${s.totalR>=0?'+':''}${s.totalR.toFixed(1)}R</div><div class="l">Total R</div></div>
+    <div class="stat" style="border-top-color:var(--amber)"><div class="v" style="color:var(--amber)">${s.open}</div><div class="l">Open / Pending</div></div>
+  `;
+}
+
+/* ===================== Equity curve ===================== */
+function renderEquityChart(){
+  const sorted = [...rows].filter(r=>r.outcome!=='open').sort((a,b)=> new Date(a.date)-new Date(b.date));
+  let cum = 0;
+  const points = sorted.map((r,i)=>{ cum += (r.r||0); return {x:i+1, y:cum}; });
+  const ctx = document.getElementById('equityChart').getContext('2d');
+  if(equityChart) equityChart.destroy();
+  equityChart = new Chart(ctx, {
+    type:'line',
+    data:{ datasets:[{
+      label:'Cumulative R', data: points,
+      borderColor: prefs.accent, backgroundColor: prefs.accent+'26', fill:true, tension:.2, pointRadius:3
+    }]},
+    options:{
+      responsive:true,
+      scales:{
+        x:{ type:'linear', title:{display:true,text:'Setup #', color:'#767e8f'}, ticks:{color:'#767e8f'}, grid:{color:'#1e212a'} },
+        y:{ title:{display:true,text:'Cumulative R', color:'#767e8f'}, ticks:{color:'#767e8f'}, grid:{color:'#1e212a'} }
+      },
+      plugins:{ legend:{display:false} }
+    }
+  });
+}
+
+/* ===================== Breakdown ===================== */
+function groupBy(field){
+  const map = {};
+  rows.forEach(r=>{
+    const key = r[field] || '—';
+    if(!map[key]) map[key] = { n:0, wins:0, losses:0, rSum:0, rCount:0 };
+    const g = map[key];
+    g.n++;
+    if(r.outcome==='win') g.wins++;
+    if(r.outcome==='loss') g.losses++;
+    if(r.r!==null && r.r!==undefined && !isNaN(r.r)){ g.rSum += r.r; g.rCount++; }
+  });
+  return map;
+}
+
+function switchBreakdown(field, btn){
+  currentBreakdown = field;
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderBreakdown();
+}
+
+function renderBreakdown(){
+  const map = groupBy(currentBreakdown);
+  const keys = Object.keys(map).sort();
+  const maxN = Math.max(...keys.map(k=>map[k].n), 1);
+  document.getElementById('breakdownPanel').innerHTML = keys.map(k=>{
+    const g = map[k];
+    const resolved = g.wins+g.losses;
+    const wr = resolved ? (g.wins/resolved*100) : 0;
+    const avgR = g.rCount ? (g.rSum/g.rCount) : 0;
+    return `<div class="breakdown-row">
+      <div class="name">${escapeHtml(k)}</div>
+      <div class="bar-wrap"><div class="bar" style="width:${(g.n/maxN*100).toFixed(0)}%; background:${wr>=50?'var(--green)':'var(--red)'}"></div></div>
+      <div class="meta">${g.n} setups · ${wr.toFixed(0)}% win · ${avgR>=0?'+':''}${avgR.toFixed(2)}R avg</div>
+    </div>`;
+  }).join('') || '<div class="hint">No data.</div>';
+}
+
+/* ===================== Filters & table ===================== */
+function populateFilterOptions(){
+  const fill = (id, field)=>{
+    const sel = document.getElementById(id);
+    const cur = sel.value;
+    const vals = [...new Set(rows.map(r=>r[field]).filter(Boolean))].sort();
+    sel.innerHTML = `<option value="">${sel.options[0].textContent}</option>` + vals.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
+    if(vals.includes(cur)) sel.value = cur;
+  };
+  fill('filterType','triangleType');
+  fill('filterCondition','condition');
+  fill('filterTimeframe','timeframe');
+}
+
+function getFilteredSorted(){
+  const typeF = document.getElementById('filterType').value;
+  const condF = document.getElementById('filterCondition').value;
+  const tfF = document.getElementById('filterTimeframe').value;
+  const outF = document.getElementById('filterOutcome').value;
+  const sorted = [...rows].sort((a,b)=> new Date(b.date)-new Date(a.date));
+  return sorted.filter(r=>{
+    if(typeF && r.triangleType!==typeF) return false;
+    if(condF && r.condition!==condF) return false;
+    if(tfF && r.timeframe!==tfF) return false;
+    if(outF && r.outcome!==outF) return false;
+    return true;
+  });
+}
+
+function renderTable(){
+  const filtered = getFilteredSorted();
+  document.getElementById('emptyState').style.display = filtered.length ? 'none':'block';
+  document.getElementById('emptyStateMobile').style.display = filtered.length ? 'none':'block';
+
+  document.getElementById('tradeBody').innerHTML = filtered.map(r=>{
+    const img = imageUrlFor(r.code);
+    const rDisplay = (r.r===null||r.r===undefined||isNaN(r.r)) ? '—' : `<span class="${r.r>=0?'r-pos':'r-neg'}">${r.r>=0?'+':''}${r.r}R</span>`;
+    const idx = rows.indexOf(r);
+    return `<tr class="trow" onclick="openReplay(${idx})">
+      <td>${r.date}</td>
+      <td>${escapeHtml(r.timeframe||'—')}</td>
+      <td>${escapeHtml(r.triangleType||'—')}</td>
+      <td>${escapeHtml(r.condition||'—')}</td>
+      <td><span class="pill ${r.outcome}">${r.outcome==='win'?'TP Hit':r.outcome==='loss'?'SL Hit':'Open'}</span></td>
+      <td>${rDisplay}</td>
+      <td class="col-chart ${prefs.showThumbs?'':'hide-thumbs'}">${img ? `<img class="thumb" src="${img}" loading="lazy" onerror="this.outerHTML='<div class=&quot;thumb-fallback&quot;>no preview</div>'">` : '<div class="thumb-fallback">—</div>'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('cardList').innerHTML = filtered.map(r=>{
+    const rDisplay = (r.r===null||r.r===undefined||isNaN(r.r)) ? '—' : `${r.r>=0?'+':''}${r.r}R`;
+    const rClass = (r.r===null||r.r===undefined||isNaN(r.r)) ? '' : (r.r>=0?'r-pos':'r-neg');
+    const idx = rows.indexOf(r);
+    return `<div class="trade-card" onclick="openReplay(${idx})">
+      <div class="top">
+        <div><div class="ttype">${escapeHtml(r.triangleType||'Setup')}</div><div class="meta">${r.date} · ${escapeHtml(r.timeframe||'—')}</div></div>
+        <span class="pill ${r.outcome}">${r.outcome==='win'?'TP Hit':r.outcome==='loss'?'SL Hit':'Open'}</span>
+      </div>
+      <div class="bottom"><div class="cond">${escapeHtml(r.condition||'—')}</div><div class="${rClass}" style="font-weight:700;">${rDisplay}</div></div>
+    </div>`;
+  }).join('');
+
+  applyPrefsToDom();
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ===================== Replay modal ===================== */
+function openReplay(idx){
+  currentReplayIdx = idx;
+  const r = rows[idx];
+  document.getElementById('replayTitle').textContent = `${r.triangleType||'Setup'} — ${r.date}`;
+  document.getElementById('replayMeta').innerHTML = `
+    <div><span class="l">Timeframe</span>${escapeHtml(r.timeframe||'—')}</div>
+    <div><span class="l">Condition</span>${escapeHtml(r.condition||'—')}</div>
+    <div><span class="l">Outcome</span><span class="pill ${r.outcome}">${r.outcome==='win'?'TP Hit':r.outcome==='loss'?'SL Hit':'Open'}</span></div>
+    <div><span class="l">Result</span>${(r.r===null||r.r===undefined||isNaN(r.r))?'—':((r.r>=0?'+':'')+r.r+'R')}</div>
+  `;
+  const img = imageUrlFor(r.code);
+  document.getElementById('replayImgWrap').innerHTML = img
+    ? `<img src="${img}" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable — open the chart link below.</div>'">`
+    : `<div class="replay-img-fallback">No chart snapshot linked for this setup.</div>`;
+  document.getElementById('replayLinkWrap').innerHTML = r.link ? `<a class="link" href="${r.link}" target="_blank">Open full chart on TradingView ↗</a>` : '';
+  document.getElementById('replayModalOverlay').classList.add('open');
+}
+function closeModal(){ document.getElementById('replayModalOverlay').classList.remove('open'); }
+
+function deleteEntry(){
+  if(currentReplayIdx===null) return;
+  if(!confirm('Delete this setup? This cannot be undone.')) return;
+  rows.splice(currentReplayIdx, 1);
+  persist();
+  refreshAll();
+  closeModal();
+  currentReplayIdx = null;
+}
+
+/* ===================== Edit Setup modal ===================== */
+function openEditFromReplay(){
+  if(currentReplayIdx===null) return;
+  const idx = currentReplayIdx;
+  closeModal();
+  openEditModal(idx);
+}
+
+function openEditModal(idx){
+  const r = rows[idx];
+  if(!r) return;
+  editState.idx = idx;
+  document.getElementById('e_date').value = r.date || '';
+  document.getElementById('e_timeframe').value = r.timeframe || '';
+  document.getElementById('e_triangleType').value = r.triangleType || '';
+  document.getElementById('e_condition').value = r.condition || '';
+  document.getElementById('e_outcome').value = r.outcome || 'open';
+  document.getElementById('e_r').value = (r.r===null||r.r===undefined) ? '' : r.r;
+  document.getElementById('e_link').value = r.link || '';
+  const img = imageUrlFor(r.code);
+  document.getElementById('e_imgWrap').innerHTML = img
+    ? `<img src="${img}" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`
+    : `<div class="replay-img-fallback">No chart snapshot linked for this setup.</div>`;
+  document.getElementById('editModalOverlay').classList.add('open');
+}
+function closeEditModal(){ document.getElementById('editModalOverlay').classList.remove('open'); }
+
+function onEditOutcomeChange(){
+  const outcome = document.getElementById('e_outcome').value;
+  if(outcome==='loss') document.getElementById('e_r').value = -1;
+  if(outcome==='open') document.getElementById('e_r').value = '';
+}
+
+function saveEditedSetup(){
+ try{
+  const idx = editState.idx;
+  if(idx===null || !rows[idx]){ alert('Nothing to save — reopen the entry and try again.'); return; }
+  const triangleType = document.getElementById('e_triangleType').value;
+  const condition = document.getElementById('e_condition').value;
+  if(!triangleType || !condition){ alert('Pick a Triangle Type and Condition for this setup.'); return; }
+  const date = document.getElementById('e_date').value || rows[idx].date;
+  const timeframe = document.getElementById('e_timeframe').value.trim() || null;
+  const outcome = document.getElementById('e_outcome').value;
+  let r = document.getElementById('e_r').value;
+  r = r==='' ? null : parseFloat(r);
+  if(outcome==='loss' && (r===null || isNaN(r))) r = -1;
+  const link = document.getElementById('e_link').value.trim() || null;
+  let code = rows[idx].code || null;
+  if(link){ const m = link.match(/\/x\/([^\/\s]+)\/?/); if(m) code = m[1]; }
+
+  rows[idx] = { date, timeframe, triangleType, condition, link, code, outcome, r: (r===null||isNaN(r))?null:r };
+  persist();
+  refreshAll();
+  closeEditModal();
+ }catch(err){
+  alert('Could not save changes: ' + err.message);
+ }
+}
+
+/* ===================== File upload (xlsx/csv) ===================== */
+function normalizeHeaderKey(k){ return String(k||'').trim().toLowerCase().replace(/\s+/g,' '); }
+
+function rowsFromParsedSheet(json){
+  return json.map(raw=>{
+    const map = {};
+    Object.keys(raw).forEach(k=> map[normalizeHeaderKey(k)] = raw[k]);
+    const get = (...names)=>{ for(const n of names){ if(map[n]!==undefined) return map[n]; } return undefined; };
+    const dateRaw = get('date');
+    if(dateRaw===undefined || dateRaw===null || dateRaw==='') return null;
+    let dateStr;
+    if(dateRaw instanceof Date) dateStr = dateRaw.toISOString().slice(0,10);
+    else if(typeof dateRaw === 'number'){
+      const d = XLSX.SSF ? XLSX.SSF.parse_date_code(dateRaw) : null;
+      dateStr = d ? `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}` : String(dateRaw);
+    } else dateStr = String(dateRaw).slice(0,10);
+
+    const link = get('link');
+    let code = null;
+    if(link){ const m = String(link).match(/\/x\/([^\/]+)\/?$/); if(m) code = m[1]; }
+    const tp = truthy(get('tp'));
+    const sl = truthy(get('sl'));
+    const rRaw = get('risk to reward','r');
+    const r = (rRaw===undefined || rRaw==='' || rRaw===null) ? null : parseFloat(rRaw);
+    return {
+      date: dateStr,
+      timeframe: get('time frame','timeframe') || null,
+      triangleType: get('triangle type') || null,
+      condition: get('condition') || null,
+      link: link || null,
+      code,
+      outcome: tp ? 'win' : (sl ? 'loss' : 'open'),
+      r: isNaN(r) ? null : r
+    };
+  }).filter(Boolean);
+}
+function truthy(v){
+  if(typeof v === 'boolean') return v;
+  if(v===undefined || v===null) return false;
+  const s = String(v).trim().toLowerCase();
+  return s==='true' || s==='1' || s==='yes' || s==='y';
+}
+
+function handleFileUpload(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try{
+      const wb = XLSX.read(e.target.result, { type:'array', cellDates:true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { defval:null });
+      const parsed = rowsFromParsedSheet(json);
+      if(!parsed.length){ alert('No valid rows found (expected columns like Date, Time frame, Triangle type, Condition, Link, TP, SL, Risk to Reward).'); return; }
+      rows = parsed;
+      persist();
+      refreshAll();
+      alert(`Loaded ${parsed.length} setups.`);
+    }catch(err){
+      alert('Could not parse file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  evt.target.value = '';
+}
+
+/* ===================== Add Setup from Chart Link (OCR best-effort) ===================== */
+let analyzerState = { code:null, link:null, ocrText:'' };
+
+function openChartAnalyzer(){
+  analyzerState = { code:null, link:null, ocrText:'' };
+  document.getElementById('a_link').value = '';
+  document.getElementById('a_statusText').textContent = '';
+  document.getElementById('a_spinner').classList.remove('on');
+  document.getElementById('a_imgWrap').style.display = 'none';
+  document.getElementById('a_imgWrap').innerHTML = '';
+  document.getElementById('a_ocrRaw').style.display = 'none';
+  document.getElementById('a_ocrRaw').textContent = '';
+  document.getElementById('a_form').style.display = 'none';
+  document.getElementById('a_date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('a_timeframe').value = '';
+  document.getElementById('a_triangleType').value = '';
+  document.getElementById('a_condition').value = '';
+  document.getElementById('a_outcome').value = 'open';
+  document.getElementById('a_r').value = '';
+  document.getElementById('a_tfBadge').textContent = '';
+  document.getElementById('a_rBadge').textContent = '';
+  document.getElementById('a_detectedInfo').textContent = '';
+  document.getElementById('analyzerModalOverlay').classList.add('open');
+}
+function closeAnalyzer(){ document.getElementById('analyzerModalOverlay').classList.remove('open'); }
+
+function setAStatus(text, spinning){
+  document.getElementById('a_statusText').textContent = text;
+  document.getElementById('a_spinner').classList.toggle('on', !!spinning);
+}
+
+async function analyzeChart(){
+  const link = document.getElementById('a_link').value.trim();
+  if(!link){ alert('Paste a chart link first.'); return; }
+  const m = link.match(/\/x\/([^\/\s]+)\/?/);
+  if(!m){ alert('Could not find a snapshot code in that link. Expecting a link like https://www.tradingview.com/x/CODE/'); return; }
+  const code = m[1];
+  const imgUrl = `https://s3.tradingview.com/snapshots/${code[0]}/${code}.png`;
+  analyzerState.code = code;
+  analyzerState.link = link;
+
+  const wrap = document.getElementById('a_imgWrap');
+  wrap.style.display = 'block';
+  wrap.innerHTML = `<img id="a_previewImg" src="${imgUrl}" crossorigin="anonymous" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Could not load a preview for this link — double check it is a TradingView chart snapshot link.</div>'">`;
+
+  setAStatus('Give me one sec — fetching chart details…', true);
+  document.getElementById('a_form').style.display = 'none';
+  document.getElementById('a_ocrRaw').style.display = 'none';
+  document.getElementById('a_detectedInfo').textContent = '';
+
+  try{
+    if(typeof Tesseract === 'undefined') throw new Error('OCR library unavailable');
+
+    setAStatus('Preparing image for reading…', true);
+    let ocrSource = imgUrl;
+    try{
+      ocrSource = await prepareImageForOcr(imgUrl);
+    }catch(prepErr){
+      ocrSource = imgUrl;
+    }
+
+    setAStatus('Reading text off the chart (this can take up to ~15s)…', true);
+    const ocrPromise = Tesseract.recognize(ocrSource, 'eng');
+    const timeoutPromise = new Promise((_, reject)=> setTimeout(()=>reject(new Error('OCR timed out')), 20000));
+    const result = await Promise.race([ocrPromise, timeoutPromise]);
+    const text = ((result && result.data && result.data.text) || '').trim();
+    analyzerState.ocrText = text;
+
+    if(text){
+      document.getElementById('a_ocrRaw').style.display = 'block';
+      document.getElementById('a_ocrRaw').textContent = 'Raw text detected on chart:\n' + text;
+      applyOcrGuesses(text);
+      setAStatus('Done — check the auto-filled fields below, they\'re best-effort guesses.', false);
+    } else {
+      document.getElementById('a_detectedInfo').textContent = 'Couldn\'t read any text on this chart (image may be too small, low-contrast, or the labels weren\'t part of the snapshot). Fill in the fields manually.';
+      setAStatus('No readable text found — fill in the details manually below.', false);
+    }
+  }catch(err){
+    setAStatus('Could not auto-read this chart (' + err.message + '). Fill in the details manually below.', false);
+  } finally {
+    document.getElementById('a_form').style.display = 'block';
+  }
+}
+
+function prepareImageForOcr(url){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = ()=>{
+      try{
+        const scale = 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth * scale;
+        canvas.height = img.naturalHeight * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const d = imgData.data;
+        for(let i=0;i<d.length;i+=4){
+          const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+          const inv = 255 - gray;
+          d[i] = d[i+1] = d[i+2] = inv;
+        }
+        ctx.putImageData(imgData, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      }catch(err){ reject(err); }
+    };
+    img.onerror = ()=> reject(new Error('image load failed'));
+    img.src = url;
+  });
+}
+
+function applyOcrGuesses(text){
+  const notes = [];
+  const rPatterns = [
+    /Risk\s*[\/\\:-]?\s*Reward\s*Ratio[^\d\-]{0,20}(-?[\d]+\.?[\d]*)/i,
+    /Reward\s*[\/\\:-]?\s*Risk\s*Ratio[^\d\-]{0,20}(-?[\d]+\.?[\d]*)/i,
+    /R\s*[:\/]\s*R[^\d\-]{0,15}(-?[\d]+\.?[\d]*)/i,
+    /\bRR\b[^\d\-]{0,15}(-?[\d]+\.?[\d]*)/i,
+    /\b1\s*:\s*([\d]+\.?[\d]*)\b/
+  ];
+  let rVal = null;
+  for(const re of rPatterns){
+    const mm = text.match(re);
+    if(mm){ const v = parseFloat(mm[1]); if(!isNaN(v)){ rVal = v; break; } }
+  }
+  if(rVal!==null){
+    document.getElementById('a_r').value = rVal;
+    document.getElementById('a_rBadge').textContent = 'auto-detected';
+    notes.push(`Detected R:R ≈ ${rVal}`);
+  }
+  const hasShort = /\bshort\b/i.test(text);
+  const hasLong = /\blong\b/i.test(text);
+  if(hasShort && hasLong){
+    notes.push('Direction unclear from text — check manually');
+  } else if(hasShort){
+    notes.push('Detected direction: Short');
+  } else if(hasLong){
+    notes.push('Detected direction: Long');
+  }
+  document.getElementById('a_detectedInfo').textContent = notes.length ? notes.join(' · ') : 'Read some text off the chart, but nothing matched a Risk/Reward Ratio or direction pattern — check the raw text above and fill in manually.';
+}
+
+function onOutcomeChange(){
+  const outcome = document.getElementById('a_outcome').value;
+  if(outcome==='loss') document.getElementById('a_r').value = -1;
+  if(outcome==='open') document.getElementById('a_r').value = '';
+}
+
+function addAnalyzedSetup(){
+ try{
+  const triangleType = document.getElementById('a_triangleType').value;
+  const condition = document.getElementById('a_condition').value;
+  if(!triangleType || !condition){ alert('Pick a Triangle Type and Condition for this setup.'); return; }
+  if(!analyzerState.code){ alert('Fetch & Analyze a chart link first before adding.'); return; }
+  const date = document.getElementById('a_date').value || new Date().toISOString().slice(0,10);
+  const timeframe = document.getElementById('a_timeframe').value.trim() || null;
+  const outcome = document.getElementById('a_outcome').value;
+  let r = document.getElementById('a_r').value;
+  r = r==='' ? null : parseFloat(r);
+  if(outcome==='loss' && (r===null || isNaN(r))) r = -1;
+
+  rows.push({
+    date, timeframe, triangleType, condition,
+    link: analyzerState.link, code: analyzerState.code,
+    outcome, r: (r===null || isNaN(r))?null:r
+  });
+  persist();
+  refreshAll();
+  closeAnalyzer();
+ }catch(err){
+  alert('Could not add this setup: ' + err.message);
+ }
+}
+
+/* ===================== Init ===================== */
+function refreshAll(){
+  populateFilterOptions();
+  renderStats();
+  renderEquityChart();
+  renderBreakdown();
+  renderTable();
+}
+loadState();
+renderDisplayControls();
+renderUserBadge();
+refreshAll();
+</script>
+</body>
+</html>
