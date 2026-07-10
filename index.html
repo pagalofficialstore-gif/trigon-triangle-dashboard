@@ -845,10 +845,13 @@ function rowsFromParsedSheet(json){
     if(dateRaw===undefined || dateRaw===null || dateRaw==='') return null;
     let dateStr;
     if(dateRaw instanceof Date){
-      // Use LOCAL date components, not toISOString() (which is UTC) — SheetJS
-      // builds this Date from local y/m/d, so reading it back via UTC getters
-      // shifts the date a day off in timezones ahead of UTC (e.g. IST).
-      const y = dateRaw.getFullYear(), mo = dateRaw.getMonth()+1, d = dateRaw.getDate();
+      // Excel date serials can carry tiny floating-point rounding noise (e.g.
+      // 23:59:50 instead of exactly midnight), which — combined with reading
+      // local date components — can land a hair on the wrong side of midnight
+      // and shift the date back a day. Nudge forward by 12h before reading the
+      // calendar date so that noise (a few seconds either way) can't flip it.
+      const nudged = new Date(dateRaw.getTime() + 12*60*60*1000);
+      const y = nudged.getFullYear(), mo = nudged.getMonth()+1, d = nudged.getDate();
       dateStr = `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     }
     else if(typeof dateRaw === 'number'){
