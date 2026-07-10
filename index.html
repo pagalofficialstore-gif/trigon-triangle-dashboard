@@ -9,6 +9,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.0/dist/tesseract.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --bg:#0a0b0f; --panel:#14161c; --panel2:#1b1e26; --headerbg:#0d0f14;
@@ -377,9 +380,7 @@
    this domain — nobody else who visits this URL sees your data. */
 const DEFAULT_DATA = [];
 
-const STORAGE_KEY = 'trigon_triangle_data_v1';
 const PREFS_KEY = 'trigon_triangle_prefs_v1';
-const AUTH_KEY = 'trigon_triangle_auth_v1';
 const ACCENTS = ['#ff6a3d','#3ea6ff','#2ecc9a','#f6b93b'];
 let rows = [];
 let prefs = { accent:'#ff6a3d', density:'comfortable', showThumbs:true };
@@ -388,22 +389,71 @@ let currentBreakdown = 'triangleType';
 let currentReplayIdx = null;
 let editState = { idx:null };
 
-function loadState(){
+/* ===================== Cloud sync (Firebase) =====================
+ * Trade data and the email/password gate both live in Cloud Firestore now,
+ * instead of per-browser localStorage. That means one login works from any
+ * device, and everyone who unlocks it sees the same live trade list.
+ *
+ * Honest caveat: the password check itself still happens in this page's
+ * JavaScript, not on a real server. The Firestore security rules only
+ * require "some authenticated session" (an automatic, invisible anonymous
+ * sign-in), not "knows the password". A casual visitor who just opens this
+ * page and uses it normally is fully gated by the password screen. But a
+ * technically determined visitor who reads this source and calls the
+ * Firebase SDK directly could sign in anonymously themselves and read/write
+ * the data without ever knowing the password. This is the same class of
+ * limitation as before — good enough to keep casual visitors out, not a
+ * substitute for real server-side authentication. */
+const firebaseConfig = {
+  apiKey: "AIzaSyDRHiq9LSiHGllMCVgwtqykn7wB5xcBOs4",
+  authDomain: "trigon-triangle-dashboard.firebaseapp.com",
+  projectId: "trigon-triangle-dashboard",
+  storageBucket: "trigon-triangle-dashboard.firebasestorage.app",
+  messagingSenderId: "887599090517",
+  appId: "1:887599090517:web:fbde5d595889ee7918bddc"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const AUTH_DOC = db.collection('meta').doc('auth');
+const TRADES_DOC = db.collection('meta').doc('trades');
+
+function ensureCloudSignIn(){
+  return new Promise((resolve)=>{
+    const unsub = firebase.auth().onAuthStateChanged(user=>{
+      if(user){ unsub(); resolve(user); }
+    });
+    firebase.auth().signInAnonymously().catch(err=>{
+      console.error('Anonymous sign-in failed', err);
+    });
+  });
+}
+
+async function getAuthDoc(){
   try{
-    const cached = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    rows = (cached && cached.length) ? cached : DEFAULT_DATA;
-  }catch(e){ rows = DEFAULT_DATA; }
+    const snap = await AUTH_DOC.get();
+    return snap.exists ? snap.data() : null;
+  }catch(e){ console.error(e); return null; }
+}
+
+async function loadState(){
+  try{
+    const snap = await TRADES_DOC.get();
+    if(snap.exists && Array.isArray(snap.data().rows) && snap.data().rows.length){
+      rows = snap.data().rows;
+    } else {
+      rows = DEFAULT_DATA;
+      if(rows.length){ try{ await TRADES_DOC.set({ rows }); }catch(e){ console.error(e); } }
+    }
+  }catch(e){
+    console.error(e);
+    rows = DEFAULT_DATA;
+  }
   try{
     const p = JSON.parse(localStorage.getItem(PREFS_KEY));
     if(p) prefs = Object.assign(prefs, p);
   }catch(e){}
 }
 
-/* ===================== Password lock screen ===================== *
- * Honest caveat: this is a client-side-only gate. It stops casual visitors
- * from opening/using the dashboard on a shared link or shared computer, but
- * it is NOT real security — anyone who reads the page source or browser
- * storage could bypass it. Don't rely on this to protect truly sensitive data. */
 async function sha256(str){
   try{
     if(crypto && crypto.subtle && crypto.subtle.digest){
@@ -423,10 +473,13 @@ async function sha256(str){
   h2 = Math.imul(h2 ^ (h2>>>16), 2246822507) ^ Math.imul(h1 ^ (h1>>>13), 3266489909);
   return (h1>>>0).toString(16).padStart(8,'0') + (h2>>>0).toString(16).padStart(8,'0');
 }
-function getAuth(){ try{ return JSON.parse(localStorage.getItem(AUTH_KEY)); }catch(e){ return null; } }
-
-function initLockScreen(){
-  const auth = getAuth();
+async function initLockScreen(){
+  document.getElementById('lockTitle').textContent = 'Connecting…';
+  document.getElementById('lockSub').textContent = 'Loading your dashboard.';
+  document.getElementById('setupForm').style.display = 'none';
+  document.getElementById('unlockForm').style.display = 'none';
+  await ensureCloudSignIn();
+  const auth = await getAuthDoc();
   if(auth && auth.email && auth.passHash){
     document.getElementById('lockTitle').textContent = 'Welcome back';
     document.getElementById('lockSub').textContent = 'Enter your password to continue.';
@@ -435,7 +488,7 @@ function initLockScreen(){
     document.getElementById('unlockForm').style.display = 'block';
   } else {
     document.getElementById('lockTitle').textContent = 'Protect this dashboard';
-    document.getElementById('lockSub').textContent = 'Set an email + password. You\'ll need them every time you open this page.';
+    document.getElementById('lockSub').textContent = 'Set an email + password. You\'ll need them on every device.';
     document.getElementById('setupForm').style.display = 'block';
     document.getElementById('unlockForm').style.display = 'none';
   }
@@ -451,8 +504,12 @@ async function setupAccess(){
   if(pass.length < 4){ err.textContent = 'Use at least 4 characters.'; return; }
   if(pass !== pass2){ err.textContent = 'Passwords don\'t match.'; return; }
   const passHash = await sha256(pass);
-  localStorage.setItem(AUTH_KEY, JSON.stringify({ email, passHash }));
-  unlockDashboard(email);
+  try{
+    await AUTH_DOC.set({ email, passHash });
+    unlockDashboard(email);
+  }catch(e){
+    err.textContent = 'Could not save — check your connection and try again.';
+  }
 }
 
 async function unlockAccess(){
@@ -460,7 +517,7 @@ async function unlockAccess(){
   const pass = document.getElementById('unlock_pass').value;
   const err = document.getElementById('unlockErr');
   err.textContent = '';
-  const auth = getAuth();
+  const auth = await getAuthDoc();
   if(!auth){ initLockScreen(); return; }
   const passHash = await sha256(pass);
   if(email === auth.email && passHash === auth.passHash){
@@ -470,17 +527,17 @@ async function unlockAccess(){
   }
 }
 
-function resetAccess(){
-  if(!confirm('This clears the saved email/password on this browser so you can set a new one. (It does NOT delete your trade data.) Continue?')) return;
-  localStorage.removeItem(AUTH_KEY);
+async function resetAccess(){
+  if(!confirm('This clears the saved email/password (on every device, since it\'s stored in the cloud) so a new one can be set. It does NOT delete your trade data. Continue?')) return;
+  try{ await AUTH_DOC.delete(); }catch(e){}
   document.getElementById('unlock_pass').value = '';
   initLockScreen();
 }
 
-function unlockDashboard(email){
+async function unlockDashboard(email){
   document.getElementById('lockScreen').classList.add('hidden');
   document.getElementById('loggedInEmail').textContent = email;
-  loadState();
+  await loadState();
   renderDisplayControls();
   refreshAll();
 }
@@ -491,7 +548,10 @@ function lockDashboard(){
   initLockScreen();
   document.getElementById('lockScreen').classList.remove('hidden');
 }
-function persist(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(rows)); }
+async function persist(){
+  try{ await TRADES_DOC.set({ rows }); }
+  catch(e){ console.error('Could not save to cloud', e); alert('Could not save changes to the cloud — check your connection and try again.'); }
+}
 function persistPrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
 
 function imageUrlFor(code){
