@@ -165,8 +165,9 @@
   .lock-reset a{color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline;}
   .user-status{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
 
+  .grid2-right{display:flex;flex-direction:column;gap:16px;min-width:0;}
   /* Daily P&L calendar */
-  .cal-card{margin-bottom:22px;}
+  .cal-card{margin-bottom:0;}
   .cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
   .cal-nav{display:flex;align-items:center;gap:10px;}
   .cal-nav button{padding:6px 12px;}
@@ -258,30 +259,32 @@
       <h3>Equity Curve (cumulative R)</h3>
       <canvas id="equityChart" height="170"></canvas>
     </div>
-    <div class="card">
-      <h3>Accuracy Breakdown</h3>
-      <div class="tabs">
-        <button class="active" onclick="switchBreakdown('triangleType', this)">TYPE</button>
-        <button onclick="switchBreakdown('condition', this)">CONDITION</button>
-        <button onclick="switchBreakdown('timeframe', this)">TIMEFRAME</button>
+    <div class="grid2-right">
+      <div class="card">
+        <h3>Accuracy Breakdown</h3>
+        <div class="tabs">
+          <button class="active" onclick="switchBreakdown('triangleType', this)">TYPE</button>
+          <button onclick="switchBreakdown('condition', this)">CONDITION</button>
+          <button onclick="switchBreakdown('timeframe', this)">TIMEFRAME</button>
+        </div>
+        <div id="breakdownPanel"></div>
       </div>
-      <div id="breakdownPanel"></div>
-    </div>
-  </div>
 
-  <div class="card cal-card">
-    <div class="cal-header">
-      <h3 style="margin:0;">Daily P&amp;L Calendar</h3>
-      <div class="cal-nav">
-        <button class="ghost" onclick="prevMonth()">&larr;</button>
-        <div id="calLabel"></div>
-        <button class="ghost" onclick="nextMonth()">&rarr;</button>
+      <div class="card cal-card">
+        <div class="cal-header">
+          <h3 style="margin:0;">Daily P&amp;L Calendar</h3>
+          <div class="cal-nav">
+            <button class="ghost" onclick="prevMonth()">&larr;</button>
+            <div id="calLabel"></div>
+            <button class="ghost" onclick="nextMonth()">&rarr;</button>
+          </div>
+        </div>
+        <div class="cal-dow-row">
+          <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
       </div>
     </div>
-    <div class="cal-dow-row">
-      <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div>
-    </div>
-    <div class="cal-grid" id="calGrid"></div>
   </div>
 
   <div class="day-filter-badge" id="dayFilterBadge"></div>
