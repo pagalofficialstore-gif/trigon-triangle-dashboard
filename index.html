@@ -311,6 +311,7 @@
         </div>
         <div class="field"><label>R multiple<span class="badge-detected" id="a_rBadge"></span></label><input type="number" step="any" id="a_r" placeholder="e.g. 3"></div>
         <div class="field full" id="a_detectedInfo"></div>
+        <div class="field full"><label>Notes</label><textarea id="a_notes" rows="3" placeholder="Add a note about this setup…" style="width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:3px;font-size:13px;font-family:inherit;resize:vertical;"></textarea></div>
       </div>
       <div class="modal-footer">
         <button class="secondary" onclick="closeAnalyzer()">Cancel</button>
@@ -330,8 +331,14 @@
     <div class="replay-meta" id="replayMeta"></div>
     <div class="replay-img-wrap" id="replayImgWrap"></div>
     <div class="hint" id="replayLinkWrap"></div>
+    <div class="field" style="margin-top:14px;">
+      <label>Notes</label>
+      <textarea id="replayNotes" rows="3" placeholder="Add a note about this setup…" style="width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:3px;font-size:13px;font-family:inherit;resize:vertical;"></textarea>
+      <div class="hint" id="replayNoteSaved" style="min-height:14px;"></div>
+    </div>
     <div class="modal-footer">
       <button class="secondary" onclick="deleteEntry()">Delete</button>
+      <button class="secondary" onclick="saveReplayNote()">Save Note</button>
       <button class="primary" onclick="openEditFromReplay()">Edit Entry</button>
     </div>
   </div>
@@ -363,6 +370,7 @@
       </div>
       <div class="field"><label>R multiple</label><input type="number" step="any" id="e_r" placeholder="e.g. 3"></div>
       <div class="field full"><label>Chart Link</label><input type="text" id="e_link" placeholder="https://www.tradingview.com/x/CODE/"></div>
+      <div class="field full"><label>Notes</label><textarea id="e_notes" rows="3" placeholder="Add a note about this setup…" style="width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:3px;font-size:13px;font-family:inherit;resize:vertical;"></textarea></div>
     </div>
     <div class="modal-footer">
       <button class="secondary" onclick="closeEditModal()">Cancel</button>
@@ -729,7 +737,7 @@ function renderTable(){
     const rDisplay = (r.r===null||r.r===undefined||isNaN(r.r)) ? '—' : `<span class="${r.r>=0?'r-pos':'r-neg'}">${r.r>=0?'+':''}${r.r}R</span>`;
     const idx = rows.indexOf(r);
     return `<tr class="trow" onclick="openReplay(${idx})">
-      <td>${r.date}</td>
+      <td>${r.date}${r.notes?' <span title="'+escapeHtml(r.notes)+'" style="opacity:.75;">📝</span>':''}</td>
       <td>${escapeHtml(r.timeframe||'—')}</td>
       <td>${escapeHtml(r.triangleType||'—')}</td>
       <td>${escapeHtml(r.condition||'—')}</td>
@@ -745,7 +753,7 @@ function renderTable(){
     const idx = rows.indexOf(r);
     return `<div class="trade-card" onclick="openReplay(${idx})">
       <div class="top">
-        <div><div class="ttype">${escapeHtml(r.triangleType||'Setup')}</div><div class="meta">${r.date} · ${escapeHtml(r.timeframe||'—')}</div></div>
+        <div><div class="ttype">${escapeHtml(r.triangleType||'Setup')}</div><div class="meta">${r.date} · ${escapeHtml(r.timeframe||'—')}${r.notes?' · 📝':''}</div></div>
         <span class="pill ${r.outcome}">${r.outcome==='win'?'TP Hit':r.outcome==='loss'?'SL Hit':'Open'}</span>
       </div>
       <div class="bottom"><div class="cond">${escapeHtml(r.condition||'—')}</div><div class="${rClass}" style="font-weight:700;">${rDisplay}</div></div>
@@ -773,9 +781,22 @@ function openReplay(idx){
     ? `<img src="${img}" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable — open the chart link below.</div>'">`
     : `<div class="replay-img-fallback">No chart snapshot linked for this setup.</div>`;
   document.getElementById('replayLinkWrap').innerHTML = r.link ? `<a class="link" href="${r.link}" target="_blank">Open full chart on TradingView ↗</a>` : '';
+  document.getElementById('replayNotes').value = r.notes || '';
+  document.getElementById('replayNoteSaved').textContent = '';
   document.getElementById('replayModalOverlay').classList.add('open');
 }
 function closeModal(){ document.getElementById('replayModalOverlay').classList.remove('open'); }
+
+function saveReplayNote(){
+  if(currentReplayIdx===null) return;
+  const val = document.getElementById('replayNotes').value.trim();
+  rows[currentReplayIdx].notes = val || null;
+  persist();
+  renderTable();
+  const saved = document.getElementById('replayNoteSaved');
+  saved.textContent = 'Saved.';
+  setTimeout(()=>{ if(saved.textContent==='Saved.') saved.textContent=''; }, 1800);
+}
 
 function deleteEntry(){
   if(currentReplayIdx===null) return;
@@ -806,6 +827,7 @@ function openEditModal(idx){
   document.getElementById('e_outcome').value = r.outcome || 'open';
   document.getElementById('e_r').value = (r.r===null||r.r===undefined) ? '' : r.r;
   document.getElementById('e_link').value = r.link || '';
+  document.getElementById('e_notes').value = r.notes || '';
   const img = imageUrlFor(r.code);
   document.getElementById('e_imgWrap').innerHTML = img
     ? `<img src="${img}" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`
@@ -836,8 +858,9 @@ function saveEditedSetup(){
   const link = document.getElementById('e_link').value.trim() || null;
   let code = rows[idx].code || null;
   if(link){ const m = link.match(/\/x\/([^\/\s]+)\/?/); if(m) code = m[1]; }
+  const notes = document.getElementById('e_notes').value.trim() || null;
 
-  rows[idx] = { date, timeframe, triangleType, condition, link, code, outcome, r: (r===null||isNaN(r))?null:r };
+  rows[idx] = { date, timeframe, triangleType, condition, link, code, outcome, r: (r===null||isNaN(r))?null:r, notes };
   persist();
   refreshAll();
   closeEditModal();
@@ -879,6 +902,7 @@ function rowsFromParsedSheet(json){
     const sl = truthy(get('sl'));
     const rRaw = get('risk to reward','r');
     const r = (rRaw===undefined || rRaw==='' || rRaw===null) ? null : parseFloat(rRaw);
+    const notesRaw = get('notes','comment','comments','note');
     return {
       date: dateStr,
       timeframe: get('time frame','timeframe') || null,
@@ -887,7 +911,8 @@ function rowsFromParsedSheet(json){
       link: link || null,
       code,
       outcome: tp ? 'win' : (sl ? 'loss' : 'open'),
-      r: isNaN(r) ? null : r
+      r: isNaN(r) ? null : r,
+      notes: (notesRaw===undefined || notesRaw===null || notesRaw==='') ? null : String(notesRaw)
     };
   }).filter(Boolean);
 }
@@ -943,6 +968,7 @@ function openChartAnalyzer(){
   document.getElementById('a_tfBadge').textContent = '';
   document.getElementById('a_rBadge').textContent = '';
   document.getElementById('a_detectedInfo').textContent = '';
+  document.getElementById('a_notes').value = '';
   document.getElementById('analyzerModalOverlay').classList.add('open');
 }
 function closeAnalyzer(){ document.getElementById('analyzerModalOverlay').classList.remove('open'); }
@@ -1084,10 +1110,11 @@ function addAnalyzedSetup(){
   r = r==='' ? null : parseFloat(r);
   if(outcome==='loss' && (r===null || isNaN(r))) r = -1;
 
+  const notes = document.getElementById('a_notes').value.trim() || null;
   rows.push({
     date, timeframe, triangleType, condition,
     link: analyzerState.link, code: analyzerState.code,
-    outcome, r: (r===null || isNaN(r))?null:r
+    outcome, r: (r===null || isNaN(r))?null:r, notes
   });
   persist();
   refreshAll();
