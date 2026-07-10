@@ -137,6 +137,23 @@
   .replay-meta{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;}
   .replay-meta div span.l{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;}
   .hint{font-size:11px;color:var(--muted);margin-top:8px;}
+
+  /* Economic calendar (red folder / high impact news) */
+  .econ-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+  .econ-meta{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);}
+  .econ-meta button{padding:6px 12px;}
+  .econ-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+  .econ-daylabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;font-weight:700;}
+  .econ-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1e212a;font-size:12.5px;}
+  .econ-row:last-child{border-bottom:none;}
+  .econ-impact{width:8px;height:8px;border-radius:50%;background:var(--red);flex-shrink:0;box-shadow:0 0 6px rgba(251,90,117,.6);}
+  .econ-time{width:64px;flex-shrink:0;color:var(--muted);font-size:11px;}
+  .econ-ccy{width:38px;flex-shrink:0;font-weight:700;font-size:11px;color:var(--text2);}
+  .econ-title{flex:1;min-width:0;}
+  .econ-vals{display:flex;gap:8px;font-size:10.5px;color:var(--muted);flex-shrink:0;white-space:nowrap;}
+  .econ-empty{color:var(--muted);font-size:12px;padding:8px 0;}
+  .econ-error{color:var(--red);font-size:12px;padding:8px 0;}
+  @media (max-width:720px){ .econ-grid{grid-template-columns:1fr;gap:18px;} .econ-vals{display:none;} }
   a.link{color:var(--accent);text-decoration:none;}
 
   /* Display settings popover */
@@ -284,6 +301,27 @@
 
 <main>
   <div class="stats" id="stats"></div>
+
+  <div class="card" style="margin-bottom:22px;">
+    <div class="econ-header">
+      <h3 style="margin:0;">Red Folder News (High Impact)</h3>
+      <div class="econ-meta">
+        <span id="econUpdated"></span>
+        <button class="ghost" onclick="loadEconomicCalendar()">&#8635; Refresh</button>
+      </div>
+    </div>
+    <div class="econ-grid">
+      <div>
+        <div class="econ-daylabel">Today &middot; <span id="econTodayDate"></span></div>
+        <div id="econToday"><div class="econ-empty">Loading&hellip;</div></div>
+      </div>
+      <div>
+        <div class="econ-daylabel">Tomorrow &middot; <span id="econTomorrowDate"></span></div>
+        <div id="econTomorrow"><div class="econ-empty">Loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="hint">Source: Forex Factory's public calendar feed (unofficial, community-used). High-impact ("red folder") events only, shown in your local time.</div>
+  </div>
 
   <div class="card" style="margin-bottom:22px;">
     <h3>Equity Curve (cumulative R)</h3>
@@ -641,6 +679,7 @@ async function unlockDashboard(email){
   await loadState();
   renderDisplayControls();
   refreshAll();
+  loadEconomicCalendar();
 }
 
 function lockDashboard(){
@@ -688,6 +727,96 @@ function applyPrefsToDom(){
   document.documentElement.style.setProperty('--accent', prefs.accent);
   document.documentElement.style.setProperty('--row-pad-v', prefs.density==='compact' ? '6px' : '11px');
   document.querySelectorAll('.col-chart').forEach(el=> el.classList.toggle('hide-thumbs', !prefs.showThumbs));
+}
+
+/* ===================== Economic calendar (red folder / high impact news) =====================
+ * There is no official public Forex Factory API. This uses their unofficial,
+ * widely-used community JSON feed (nfs.faireconomy.media). That feed doesn't
+ * send CORS headers, so a direct browser fetch from our own domain is blocked —
+ * we route it through a public CORS relay instead, with a couple of fallbacks
+ * in case one relay is down or rate-limited. If every source fails, the card
+ * shows an error instead of breaking the rest of the dashboard. */
+const FF_CALENDAR_BASE = 'https://nfs.faireconomy.media/';
+const FF_PROXIES = [
+  (url)=> 'https://corsproxy.io/?url=' + encodeURIComponent(url),
+  (url)=> 'https://r.jina.ai/' + url,
+  (url)=> 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
+];
+
+async function fetchFFJson(path){
+  const target = FF_CALENDAR_BASE + path;
+  let lastErr;
+  for(const wrap of FF_PROXIES){
+    try{
+      const resp = await fetch(wrap(target), { cache:'no-store' });
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      let text = await resp.text();
+      const idx = text.indexOf('[');
+      if(idx > 0) text = text.slice(idx);
+      const data = JSON.parse(text);
+      if(Array.isArray(data)) return data;
+      throw new Error('Unexpected response shape');
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error('All calendar sources failed');
+}
+
+function isSameLocalDay(d1, d2){
+  return d1.getFullYear()===d2.getFullYear() && d1.getMonth()===d2.getMonth() && d1.getDate()===d2.getDate();
+}
+
+function econRowHtml(e){
+  const d = new Date(e.date);
+  const time = isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  const vals = [];
+  if(e.forecast) vals.push(`F: ${escapeHtml(e.forecast)}`);
+  if(e.previous) vals.push(`P: ${escapeHtml(e.previous)}`);
+  return `<div class="econ-row">
+    <span class="econ-impact" title="High impact"></span>
+    <span class="econ-time">${time}</span>
+    <span class="econ-ccy">${escapeHtml(e.country||'—')}</span>
+    <span class="econ-title">${escapeHtml(e.title||'—')}</span>
+    <span class="econ-vals">${vals.join(' &middot; ')}</span>
+  </div>`;
+}
+
+async function loadEconomicCalendar(){
+  document.getElementById('econToday').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+  document.getElementById('econTomorrow').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+  document.getElementById('econUpdated').textContent = '';
+
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('econTodayDate').textContent = now.toLocaleDateString([], { month:'short', day:'numeric' });
+  document.getElementById('econTomorrowDate').textContent = tomorrow.toLocaleDateString([], { month:'short', day:'numeric' });
+
+  try{
+    const [thisWeek, nextWeek] = await Promise.allSettled([
+      fetchFFJson('ff_calendar_thisweek.json'),
+      fetchFFJson('ff_calendar_nextweek.json')
+    ]);
+    let all = [];
+    if(thisWeek.status==='fulfilled') all = all.concat(thisWeek.value);
+    if(nextWeek.status==='fulfilled') all = all.concat(nextWeek.value);
+    if(!all.length) throw (thisWeek.reason || nextWeek.reason || new Error('No calendar data available'));
+
+    const highImpact = all.filter(e => e.impact === 'High');
+    const byTime = (a,b)=> new Date(a.date) - new Date(b.date);
+    const todayEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), now)).sort(byTime);
+    const tomorrowEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), tomorrow)).sort(byTime);
+
+    document.getElementById('econToday').innerHTML = todayEvents.length
+      ? todayEvents.map(econRowHtml).join('')
+      : '<div class="econ-empty">No high-impact events today.</div>';
+    document.getElementById('econTomorrow').innerHTML = tomorrowEvents.length
+      ? tomorrowEvents.map(econRowHtml).join('')
+      : '<div class="econ-empty">No high-impact events tomorrow.</div>';
+    document.getElementById('econUpdated').textContent = 'Updated ' + now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }catch(err){
+    const msg = '<div class="econ-error">Could not load the calendar (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
+    document.getElementById('econToday').innerHTML = msg;
+    document.getElementById('econTomorrow').innerHTML = msg;
+  }
 }
 
 /* ===================== Stats ===================== */
