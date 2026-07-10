@@ -18,14 +18,24 @@
     --border:#23262f; --border2:#262a34;
     --text:#edeef2; --text2:#f4f5f7; --muted:#767e8f;
     --accent:#ff6a3d; --green:#34d399; --red:#fb5a75; --amber:#f6b93b;
+    --chart-grid:#1e212a; --overlay:rgba(0,0,0,.72);
     --row-pad-v:11px;
   }
+  html[data-theme="light"]{
+    --bg:#f4f5f7; --panel:#ffffff; --panel2:#f0f1f4; --headerbg:#ffffff;
+    --border:#e1e4ea; --border2:#d5d9e0;
+    --text:#20232b; --text2:#0d0f14; --muted:#6b7280;
+    --green:#0f9d63; --red:#dc2645; --amber:#b45309;
+    --chart-grid:#e8eaef; --overlay:rgba(20,22,28,.45);
+  }
+  html[data-theme="light"] body{ color-scheme: light; }
+  html[data-theme="dark"] body{ color-scheme: dark; }
   *{box-sizing:border-box;}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;transition:background .15s ease,color .15s ease;}
   ::selection{background:rgba(255,106,61,.35);}
   ::-webkit-scrollbar{width:10px;height:10px;}
-  ::-webkit-scrollbar-track{background:#12141a;}
-  ::-webkit-scrollbar-thumb{background:#2a2e39;border-radius:6px;}
+  ::-webkit-scrollbar-track{background:var(--bg);}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:6px;}
   @keyframes tg-spin{to{transform:rotate(360deg);}}
   @keyframes tg-rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
   @keyframes tg-pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.1);opacity:.8;}}
@@ -109,7 +119,7 @@
     .form-grid{grid-template-columns:1fr;}
   }
 
-  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);display:none;align-items:flex-start;justify-content:center;z-index:50;overflow-y:auto;padding:36px 16px;}
+  .modal-overlay{position:fixed;inset:0;background:var(--overlay);display:none;align-items:flex-start;justify-content:center;z-index:50;overflow-y:auto;padding:36px 16px;}
   .modal-overlay.open{display:flex;}
   .modal{background:var(--panel);border:1px solid var(--border2);border-radius:6px;width:100%;max-width:720px;padding:26px;animation:tg-rise .18s ease;}
   .modal .top-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
@@ -251,6 +261,13 @@
     <div class="display-toggle">
       <button class="ghost" onclick="toggleDisplayPop()">DISPLAY ⚙</button>
       <div class="display-pop" id="displayPop">
+        <div class="row">
+          <div class="row-label">Theme</div>
+          <div class="seg">
+            <button id="themeDarkBtn" onclick="setTheme('dark')">Dark</button>
+            <button id="themeLightBtn" onclick="setTheme('light')">Light</button>
+          </div>
+        </div>
         <div class="row">
           <div class="row-label">Accent Color</div>
           <div class="swatches" id="swatchRow"></div>
@@ -509,7 +526,7 @@ const PREFS_KEY = 'trigon_triangle_prefs_v1';
 const SESSION_KEY = 'trigon_triangle_session_v1';
 const ACCENTS = ['#ff6a3d','#3ea6ff','#2ecc9a','#f6b93b'];
 let rows = [];
-let prefs = { accent:'#ff6a3d', density:'comfortable', showThumbs:true };
+let prefs = { accent:'#ff6a3d', density:'comfortable', showThumbs:true, theme:'dark' };
 let equityChart = null;
 let currentBreakdown = 'triangleType';
 let currentReplayIdx = null;
@@ -718,12 +735,17 @@ function renderDisplayControls(){
   document.getElementById('densComfortBtn').classList.toggle('active', prefs.density==='comfortable');
   document.getElementById('densCompactBtn').classList.toggle('active', prefs.density==='compact');
   document.getElementById('thumbToggle').checked = prefs.showThumbs;
+  document.getElementById('themeDarkBtn').classList.toggle('active', prefs.theme==='dark');
+  document.getElementById('themeLightBtn').classList.toggle('active', prefs.theme==='light');
   applyPrefsToDom();
 }
 function setAccent(c){ prefs.accent = c; persistPrefs(); renderDisplayControls(); renderEquityChart(); renderBreakdown(); }
 function setDensity(d){ prefs.density = d; persistPrefs(); renderDisplayControls(); }
 function setThumbs(v){ prefs.showThumbs = v; persistPrefs(); applyPrefsToDom(); }
+function setTheme(t){ prefs.theme = t; persistPrefs(); renderDisplayControls(); renderEquityChart(); }
+function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function applyPrefsToDom(){
+  document.documentElement.setAttribute('data-theme', prefs.theme || 'dark');
   document.documentElement.style.setProperty('--accent', prefs.accent);
   document.documentElement.style.setProperty('--row-pad-v', prefs.density==='compact' ? '6px' : '11px');
   document.querySelectorAll('.col-chart').forEach(el=> el.classList.toggle('hide-thumbs', !prefs.showThumbs));
@@ -877,27 +899,35 @@ function renderEquityChart(){
   gradient.addColorStop(0, prefs.accent+'55');
   gradient.addColorStop(1, prefs.accent+'00');
 
+  const muted = cssVar('--muted') || '#767e8f';
+  const gridColor = cssVar('--chart-grid') || '#1e212a';
+  const panelColor = cssVar('--panel') || '#14161c';
+  const border2 = cssVar('--border2') || '#262a34';
+  const text2 = cssVar('--text2') || '#f4f5f7';
+  const textMain = cssVar('--text') || '#c7cbd4';
+  const bgColor = cssVar('--bg') || '#0a0b0f';
+
   equityChart = new Chart(ctx, {
     type:'line',
     data:{ datasets:[{
       label:'Cumulative R', data: points,
       borderColor: prefs.accent, backgroundColor: gradient, borderWidth:2.5,
       fill:true, tension:.25, pointRadius:3, pointHoverRadius:5,
-      pointBackgroundColor: prefs.accent, pointBorderColor:'#0a0b0f'
+      pointBackgroundColor: prefs.accent, pointBorderColor: bgColor
     }]},
     options:{
       responsive:true,
       maintainAspectRatio:false,
       interaction:{ mode:'nearest', axis:'x', intersect:false },
       scales:{
-        x:{ type:'linear', title:{display:true,text:'Setup #', color:'#767e8f'}, ticks:{color:'#767e8f'}, grid:{color:'#1e212a'} },
-        y:{ title:{display:true,text:'Cumulative R', color:'#767e8f'}, ticks:{color:'#767e8f'}, grid:{color:'#1e212a'} }
+        x:{ type:'linear', title:{display:true,text:'Setup #', color:muted}, ticks:{color:muted}, grid:{color:gridColor} },
+        y:{ title:{display:true,text:'Cumulative R', color:muted}, ticks:{color:muted}, grid:{color:gridColor} }
       },
       plugins:{
         legend:{display:false},
         tooltip:{
-          backgroundColor:'#14161c', borderColor:'#262a34', borderWidth:1,
-          titleColor:'#f4f5f7', bodyColor:'#c7cbd4', padding:10, displayColors:false,
+          backgroundColor:panelColor, borderColor:border2, borderWidth:1,
+          titleColor:text2, bodyColor:textMain, padding:10, displayColors:false,
           titleFont:{ family:"'JetBrains Mono',monospace", size:12 },
           bodyFont:{ family:"'JetBrains Mono',monospace", size:12 },
           callbacks:{
