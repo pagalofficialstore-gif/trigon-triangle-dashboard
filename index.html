@@ -381,6 +381,7 @@
 const DEFAULT_DATA = [];
 
 const PREFS_KEY = 'trigon_triangle_prefs_v1';
+const SESSION_KEY = 'trigon_triangle_session_v1';
 const ACCENTS = ['#ff6a3d','#3ea6ff','#2ecc9a','#f6b93b'];
 let rows = [];
 let prefs = { accent:'#ff6a3d', density:'comfortable', showThumbs:true };
@@ -481,6 +482,14 @@ async function initLockScreen(){
   await ensureCloudSignIn();
   const auth = await getAuthDoc();
   if(auth && auth.email && auth.passHash){
+    // Stay logged in: if this browser already unlocked with this exact
+    // account before, skip the password screen entirely on future visits.
+    let session = null;
+    try{ session = JSON.parse(localStorage.getItem(SESSION_KEY)); }catch(e){}
+    if(session && session.email === auth.email){
+      unlockDashboard(auth.email);
+      return;
+    }
     document.getElementById('lockTitle').textContent = 'Welcome back';
     document.getElementById('lockSub').textContent = 'Enter your password to continue.';
     document.getElementById('unlock_email').value = auth.email;
@@ -530,6 +539,7 @@ async function unlockAccess(){
 async function resetAccess(){
   if(!confirm('This clears the saved email/password (on every device, since it\'s stored in the cloud) so a new one can be set. It does NOT delete your trade data. Continue?')) return;
   try{ await AUTH_DOC.delete(); }catch(e){}
+  localStorage.removeItem(SESSION_KEY);
   document.getElementById('unlock_pass').value = '';
   initLockScreen();
 }
@@ -537,12 +547,15 @@ async function resetAccess(){
 async function unlockDashboard(email){
   document.getElementById('lockScreen').classList.add('hidden');
   document.getElementById('loggedInEmail').textContent = email;
+  // Stay logged in on this browser until LOCK is clicked or access is reset.
+  try{ localStorage.setItem(SESSION_KEY, JSON.stringify({ email })); }catch(e){}
   await loadState();
   renderDisplayControls();
   refreshAll();
 }
 
 function lockDashboard(){
+  localStorage.removeItem(SESSION_KEY);
   document.getElementById('unlock_pass').value = '';
   document.getElementById('unlockErr').textContent = '';
   initLockScreen();
@@ -556,7 +569,7 @@ function persistPrefs(){ localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
 
 function imageUrlFor(code){
   if(!code) return null;
-  return `https://s3.tradingview.com/snapshots/${code[0]}/${code}.png`;
+  return `https://s3.tradingview.com/snapshots/${code[0].toLowerCase()}/${code}.png`;
 }
 
 /* ===================== Display settings (accent / density / thumbnails) ===================== */
@@ -945,7 +958,7 @@ async function analyzeChart(){
   const m = link.match(/\/x\/([^\/\s]+)\/?/);
   if(!m){ alert('Could not find a snapshot code in that link. Expecting a link like https://www.tradingview.com/x/CODE/'); return; }
   const code = m[1];
-  const imgUrl = `https://s3.tradingview.com/snapshots/${code[0]}/${code}.png`;
+  const imgUrl = `https://s3.tradingview.com/snapshots/${code[0].toLowerCase()}/${code}.png`;
   analyzerState.code = code;
   analyzerState.link = link;
 
