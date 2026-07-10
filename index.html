@@ -408,7 +408,7 @@
 </main>
 
 <!-- Add Setup from Chart Link modal -->
-<div class="modal-overlay" id="analyzerModalOverlay">
+<div class="modal-overlay" id="analyzerModalOverlay" onclick="if(event.target===this) closeAnalyzer()">
   <div class="modal">
     <div class="top-row">
       <h2>Add Setup from Chart Link</h2>
@@ -453,7 +453,7 @@
 </div>
 
 <!-- Replay / Setup detail modal -->
-<div class="modal-overlay" id="replayModalOverlay">
+<div class="modal-overlay" id="replayModalOverlay" onclick="if(event.target===this) closeModal()">
   <div class="modal">
     <div class="top-row">
       <h2 id="replayTitle">Setup Detail</h2>
@@ -476,7 +476,7 @@
 </div>
 
 <!-- Edit Setup modal -->
-<div class="modal-overlay" id="editModalOverlay">
+<div class="modal-overlay" id="editModalOverlay" onclick="if(event.target===this) closeEditModal()">
   <div class="modal">
     <div class="top-row">
       <h2>Edit Setup</h2>
