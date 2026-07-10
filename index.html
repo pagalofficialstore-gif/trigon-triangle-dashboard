@@ -52,7 +52,7 @@
   .stat .v{font-size:23px;font-weight:700;}
   .stat .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:5px;}
 
-  .grid2{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin-bottom:22px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px;}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:18px;min-width:0;}
   .card h3{margin:0 0 14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
 
@@ -182,25 +182,27 @@
   .maint-dots span:nth-child(2){animation-delay:.15s;}
   .maint-dots span:nth-child(3){animation-delay:.3s;}
 
-  .grid2-right{display:flex;flex-direction:column;gap:16px;min-width:0;}
   /* Daily P&L calendar */
-  .cal-card{margin-bottom:0;}
+  .cal-card{margin-bottom:0;min-width:0;}
   .cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
   .cal-nav{display:flex;align-items:center;gap:10px;}
   .cal-nav button{padding:6px 12px;}
   #calLabel{font-size:12px;color:var(--muted);min-width:120px;text-align:center;}
-  .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:5px;max-width:340px;}
-  .cal-dow{text-align:center;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
-  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;max-width:340px;}
-  .cal-day{aspect-ratio:1;max-height:38px;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:8.5px;cursor:pointer;border:1px solid var(--border2);color:var(--text);transition:filter .15s;}
+  .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;max-width:460px;}
+  .cal-dow{text-align:center;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:460px;}
+  .cal-day{aspect-ratio:1;max-height:52px;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:9.5px;cursor:pointer;border:1px solid var(--border2);color:var(--text);transition:filter .15s;}
   .cal-day:hover{filter:brightness(1.15);}
   .cal-day.empty{visibility:hidden;cursor:default;}
   .cal-day.selected{outline:2px solid var(--accent);outline-offset:-2px;}
-  .cal-day .dnum{font-size:7.5px;opacity:.7;}
-  .cal-day .dr{font-weight:700;font-size:8px;}
+  .cal-day .dnum{font-size:9px;opacity:.7;}
+  .cal-day .dr{font-weight:700;font-size:10px;}
+  .cal-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:10.5px;color:var(--muted);}
+  .cal-legend-item{display:flex;align-items:center;gap:6px;}
+  .cal-legend-swatch{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid var(--border2);}
   .day-filter-badge{margin:-6px 0 14px;font-size:11px;color:var(--muted);}
   .day-filter-badge a{color:var(--accent);cursor:pointer;text-decoration:underline;}
-  @media (max-width:720px){ .cal-dow-row,.cal-grid{max-width:100%;} .cal-day{font-size:8px;max-height:none;} .cal-day .dr{font-size:8.5px;} }
+  @media (max-width:720px){ .cal-dow-row,.cal-grid{max-width:100%;} .cal-day{font-size:9px;max-height:none;} .cal-day .dr{font-size:9.5px;} }
 </style>
 </head>
 <body>
@@ -283,35 +285,41 @@
 <main>
   <div class="stats" id="stats"></div>
 
+  <div class="card" style="margin-bottom:22px;">
+    <h3>Equity Curve (cumulative R)</h3>
+    <div style="position:relative;height:260px;">
+      <canvas id="equityChart"></canvas>
+    </div>
+  </div>
+
   <div class="grid2">
     <div class="card">
-      <h3>Equity Curve (cumulative R)</h3>
-      <canvas id="equityChart" height="170"></canvas>
-    </div>
-    <div class="grid2-right">
-      <div class="card">
-        <h3>Accuracy Breakdown</h3>
-        <div class="tabs">
-          <button class="active" onclick="switchBreakdown('triangleType', this)">TYPE</button>
-          <button onclick="switchBreakdown('condition', this)">CONDITION</button>
-          <button onclick="switchBreakdown('timeframe', this)">TIMEFRAME</button>
-        </div>
-        <div id="breakdownPanel"></div>
+      <h3>Accuracy Breakdown</h3>
+      <div class="tabs">
+        <button class="active" onclick="switchBreakdown('triangleType', this)">TYPE</button>
+        <button onclick="switchBreakdown('condition', this)">CONDITION</button>
+        <button onclick="switchBreakdown('timeframe', this)">TIMEFRAME</button>
       </div>
+      <div id="breakdownPanel"></div>
+    </div>
 
-      <div class="card cal-card">
-        <div class="cal-header">
-          <h3 style="margin:0;">Daily P&amp;L Calendar</h3>
-          <div class="cal-nav">
-            <button class="ghost" onclick="prevMonth()">&larr;</button>
-            <div id="calLabel"></div>
-            <button class="ghost" onclick="nextMonth()">&rarr;</button>
-          </div>
+    <div class="card cal-card">
+      <div class="cal-header">
+        <h3 style="margin:0;">Daily P&amp;L Calendar</h3>
+        <div class="cal-nav">
+          <button class="ghost" onclick="prevMonth()">&larr;</button>
+          <div id="calLabel"></div>
+          <button class="ghost" onclick="nextMonth()">&rarr;</button>
         </div>
-        <div class="cal-dow-row">
-          <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div>
-        </div>
-        <div class="cal-grid" id="calGrid"></div>
+      </div>
+      <div class="cal-dow-row">
+        <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div>
+      </div>
+      <div class="cal-grid" id="calGrid"></div>
+      <div class="cal-legend">
+        <span class="cal-legend-item"><span class="cal-legend-swatch" style="background:rgba(52,211,153,.55)"></span>Profit day</span>
+        <span class="cal-legend-item"><span class="cal-legend-swatch" style="background:rgba(251,90,117,.55)"></span>Loss day</span>
+        <span class="cal-legend-item"><span class="cal-legend-swatch" style="background:var(--panel2)"></span>No trades</span>
       </div>
     </div>
   </div>
@@ -494,7 +502,7 @@ const firebaseConfig = {
   messagingSenderId: "887599090517",
   appId: "1:887599090517:web:fbde5d595889ee7918bddc"
 };
-firebase.initializeApp(firebaseConfig);
+if(!firebase.apps.length){ firebase.initializeApp(firebaseConfig); }
 const db = firebase.firestore();
 const AUTH_DOC = db.collection('meta').doc('auth');
 const TRADES_DOC = db.collection('meta').doc('trades');
@@ -709,26 +717,68 @@ function renderStats(){
 }
 
 /* ===================== Equity curve ===================== */
+const zeroLinePlugin = {
+  id: 'zeroLine',
+  afterDatasetsDraw(chart){
+    const { ctx, chartArea, scales } = chart;
+    if(!scales.y || !chartArea) return;
+    const yZero = scales.y.getPixelForValue(0);
+    if(yZero < chartArea.top || yZero > chartArea.bottom) return;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(118,126,143,.5)';
+    ctx.setLineDash([4,4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(chartArea.left, yZero);
+    ctx.lineTo(chartArea.right, yZero);
+    ctx.stroke();
+    ctx.restore();
+  }
+};
+
 function renderEquityChart(){
   const sorted = [...rows].filter(r=>r.outcome!=='open').sort((a,b)=> new Date(a.date)-new Date(b.date));
   let cum = 0;
   const points = sorted.map((r,i)=>{ cum += (r.r||0); return {x:i+1, y:cum}; });
-  const ctx = document.getElementById('equityChart').getContext('2d');
+  const canvas = document.getElementById('equityChart');
+  const ctx = canvas.getContext('2d');
   if(equityChart) equityChart.destroy();
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height || 260);
+  gradient.addColorStop(0, prefs.accent+'55');
+  gradient.addColorStop(1, prefs.accent+'00');
+
   equityChart = new Chart(ctx, {
     type:'line',
     data:{ datasets:[{
       label:'Cumulative R', data: points,
-      borderColor: prefs.accent, backgroundColor: prefs.accent+'26', fill:true, tension:.2, pointRadius:3
+      borderColor: prefs.accent, backgroundColor: gradient, borderWidth:2.5,
+      fill:true, tension:.25, pointRadius:3, pointHoverRadius:5,
+      pointBackgroundColor: prefs.accent, pointBorderColor:'#0a0b0f'
     }]},
     options:{
       responsive:true,
+      maintainAspectRatio:false,
+      interaction:{ mode:'nearest', axis:'x', intersect:false },
       scales:{
         x:{ type:'linear', title:{display:true,text:'Setup #', color:'#767e8f'}, ticks:{color:'#767e8f'}, grid:{color:'#1e212a'} },
         y:{ title:{display:true,text:'Cumulative R', color:'#767e8f'}, ticks:{color:'#767e8f'}, grid:{color:'#1e212a'} }
       },
-      plugins:{ legend:{display:false} }
-    }
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          backgroundColor:'#14161c', borderColor:'#262a34', borderWidth:1,
+          titleColor:'#f4f5f7', bodyColor:'#c7cbd4', padding:10, displayColors:false,
+          titleFont:{ family:"'JetBrains Mono',monospace", size:12 },
+          bodyFont:{ family:"'JetBrains Mono',monospace", size:12 },
+          callbacks:{
+            title:(items)=> `Setup #${items[0].parsed.x}`,
+            label:(item)=> `Cumulative: ${item.parsed.y>=0?'+':''}${item.parsed.y.toFixed(1)}R`
+          }
+        }
+      }
+    },
+    plugins:[zeroLinePlugin]
   });
 }
 
