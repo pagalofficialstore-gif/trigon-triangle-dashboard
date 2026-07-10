@@ -164,6 +164,25 @@
   .lock-reset{text-align:center;margin-top:14px;}
   .lock-reset a{color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline;}
   .user-status{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
+
+  /* Daily P&L calendar */
+  .cal-card{margin-bottom:22px;}
+  .cal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+  .cal-nav{display:flex;align-items:center;gap:10px;}
+  .cal-nav button{padding:6px 12px;}
+  #calLabel{font-size:12px;color:var(--muted);min-width:120px;text-align:center;}
+  .cal-dow-row{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;}
+  .cal-dow{text-align:center;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .cal-day{aspect-ratio:1;border-radius:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10.5px;cursor:pointer;border:1px solid var(--border2);color:var(--text);transition:filter .15s;}
+  .cal-day:hover{filter:brightness(1.15);}
+  .cal-day.empty{visibility:hidden;cursor:default;}
+  .cal-day.selected{outline:2px solid var(--accent);outline-offset:-2px;}
+  .cal-day .dnum{font-size:9.5px;opacity:.7;}
+  .cal-day .dr{font-weight:700;}
+  .day-filter-badge{margin:-6px 0 14px;font-size:11px;color:var(--muted);}
+  .day-filter-badge a{color:var(--accent);cursor:pointer;text-decoration:underline;}
+  @media (max-width:720px){ .cal-day{font-size:9px;} .cal-day .dr{font-size:9.5px;} }
 </style>
 </head>
 <body>
@@ -249,6 +268,23 @@
       <div id="breakdownPanel"></div>
     </div>
   </div>
+
+  <div class="card cal-card">
+    <div class="cal-header">
+      <h3 style="margin:0;">Daily P&amp;L Calendar</h3>
+      <div class="cal-nav">
+        <button class="ghost" onclick="prevMonth()">&larr;</button>
+        <div id="calLabel"></div>
+        <button class="ghost" onclick="nextMonth()">&rarr;</button>
+      </div>
+    </div>
+    <div class="cal-dow-row">
+      <div class="cal-dow">Sun</div><div class="cal-dow">Mon</div><div class="cal-dow">Tue</div><div class="cal-dow">Wed</div><div class="cal-dow">Thu</div><div class="cal-dow">Fri</div><div class="cal-dow">Sat</div>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <div class="day-filter-badge" id="dayFilterBadge"></div>
 
   <div class="filters">
     <select id="filterType" onchange="renderTable()"><option value="">All triangle types</option></select>
@@ -397,6 +433,8 @@ let equityChart = null;
 let currentBreakdown = 'triangleType';
 let currentReplayIdx = null;
 let editState = { idx:null };
+let calendarMonth = null;
+let dayFilter = null;
 
 /* ===================== Cloud sync (Firebase) =====================
  * Trade data and the email/password gate both live in Cloud Firestore now,
@@ -698,6 +736,70 @@ function renderBreakdown(){
   }).join('') || '<div class="hint">No data.</div>';
 }
 
+/* ===================== Daily P&L calendar ===================== */
+function groupByDay(){
+  const map = {};
+  rows.forEach(r=>{
+    if(!r.date) return;
+    if(!map[r.date]) map[r.date] = { n:0, rSum:0 };
+    map[r.date].n++;
+    if(r.r!==null && r.r!==undefined && !isNaN(r.r)) map[r.date].rSum += r.r;
+  });
+  return map;
+}
+
+function renderCalendar(){
+  if(!calendarMonth){
+    const dates = rows.map(r=>r.date).filter(Boolean).sort();
+    const latest = dates.length ? dates[dates.length-1] : null;
+    calendarMonth = latest ? new Date(latest+'T00:00:00') : new Date();
+    calendarMonth.setDate(1);
+  }
+  const year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
+  const firstDow = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const dayMap = groupByDay();
+  document.getElementById('calLabel').textContent = calendarMonth.toLocaleString('default',{month:'long', year:'numeric'});
+
+  let maxAbs = 0;
+  Object.values(dayMap).forEach(d=> maxAbs = Math.max(maxAbs, Math.abs(d.rSum)));
+  if(maxAbs===0) maxAbs = 1;
+
+  let html = '';
+  for(let i=0;i<firstDow;i++) html += `<div class="cal-day empty"></div>`;
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const info = dayMap[dateStr];
+    const selected = dateStr === dayFilter ? 'selected' : '';
+    if(info){
+      const intensity = Math.min(Math.abs(info.rSum)/maxAbs, 1);
+      const isPos = info.rSum >= 0;
+      const bg = isPos
+        ? `rgba(52,211,153,${(0.15+intensity*0.55).toFixed(2)})`
+        : `rgba(251,90,117,${(0.15+intensity*0.55).toFixed(2)})`;
+      const rDisp = `${info.rSum>=0?'+':''}${info.rSum.toFixed(1)}R`;
+      html += `<div class="cal-day ${selected}" style="background:${bg}" onclick="toggleDayFilter('${dateStr}')" title="${info.n} setup${info.n>1?'s':''} · ${rDisp}">
+        <div class="dnum">${d}</div>
+        <div class="dr">${rDisp}</div>
+      </div>`;
+    } else {
+      html += `<div class="cal-day ${selected}" style="background:var(--panel2);opacity:.5;" onclick="toggleDayFilter('${dateStr}')">
+        <div class="dnum">${d}</div>
+      </div>`;
+    }
+  }
+  document.getElementById('calGrid').innerHTML = html;
+}
+
+function prevMonth(){ calendarMonth.setMonth(calendarMonth.getMonth()-1); renderCalendar(); }
+function nextMonth(){ calendarMonth.setMonth(calendarMonth.getMonth()+1); renderCalendar(); }
+
+function toggleDayFilter(dateStr){
+  dayFilter = (dayFilter === dateStr) ? null : dateStr;
+  renderCalendar();
+  renderTable();
+}
+
 /* ===================== Filters & table ===================== */
 function populateFilterOptions(){
   const fill = (id, field)=>{
@@ -723,6 +825,7 @@ function getFilteredSorted(){
     if(condF && r.condition!==condF) return false;
     if(tfF && r.timeframe!==tfF) return false;
     if(outF && r.outcome!==outF) return false;
+    if(dayFilter && r.date!==dayFilter) return false;
     return true;
   });
 }
@@ -731,6 +834,9 @@ function renderTable(){
   const filtered = getFilteredSorted();
   document.getElementById('emptyState').style.display = filtered.length ? 'none':'block';
   document.getElementById('emptyStateMobile').style.display = filtered.length ? 'none':'block';
+  document.getElementById('dayFilterBadge').innerHTML = dayFilter
+    ? `Filtered to <strong style="color:var(--text2)">${dayFilter}</strong> — <a onclick="toggleDayFilter('${dayFilter}')">clear</a>`
+    : '';
 
   document.getElementById('tradeBody').innerHTML = filtered.map(r=>{
     const img = imageUrlFor(r.code);
@@ -1130,6 +1236,7 @@ function refreshAll(){
   renderStats();
   renderEquityChart();
   renderBreakdown();
+  renderCalendar();
   renderTable();
 }
 initLockScreen();
