@@ -28,6 +28,9 @@
   ::-webkit-scrollbar-thumb{background:#2a2e39;border-radius:6px;}
   @keyframes tg-spin{to{transform:rotate(360deg);}}
   @keyframes tg-rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
+  @keyframes tg-pulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.1);opacity:.8;}}
+  @keyframes tg-progress{0%{transform:translateX(-120%);}100%{transform:translateX(320%);}}
+  @keyframes tg-bounce{0%,80%,100%{transform:translateY(0);}40%{transform:translateY(-8px);}}
   h1,h2,h3{font-family:'Space Grotesk',sans-serif;}
 
   header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 28px;border-bottom:1px solid var(--border);background:var(--headerbg);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
@@ -165,6 +168,20 @@
   .lock-reset a{color:var(--muted);font-size:11px;cursor:pointer;text-decoration:underline;}
   .user-status{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted);}
 
+  /* Maintenance screen */
+  #maintenanceScreen{display:none;position:fixed;inset:0;background:var(--bg);z-index:200;align-items:center;justify-content:center;padding:20px;}
+  .maint-card{max-width:380px;text-align:center;}
+  .maint-logo{margin:0 auto 22px;animation:tg-spin 3.4s linear infinite, tg-pulse 1.8s ease-in-out infinite;}
+  .maint-label{font-size:10px;letter-spacing:.14em;color:var(--accent);text-transform:uppercase;font-weight:700;margin-bottom:10px;}
+  .maint-title{font-family:'Space Grotesk',sans-serif;font-size:21px;color:var(--text2);margin:0 0 10px;}
+  .maint-sub{font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:26px;}
+  .maint-progress{width:100%;height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-bottom:22px;position:relative;}
+  .maint-progress-bar{position:absolute;top:0;left:0;height:100%;width:35%;background:linear-gradient(90deg, transparent, var(--accent), transparent);border-radius:3px;animation:tg-progress 1.6s ease-in-out infinite;}
+  .maint-dots{display:flex;gap:8px;justify-content:center;}
+  .maint-dots span{width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block;animation:tg-bounce 1.2s ease-in-out infinite;}
+  .maint-dots span:nth-child(2){animation-delay:.15s;}
+  .maint-dots span:nth-child(3){animation-delay:.3s;}
+
   .grid2-right{display:flex;flex-direction:column;gap:16px;min-width:0;}
   /* Daily P&L calendar */
   .cal-card{margin-bottom:0;}
@@ -187,6 +204,18 @@
 </style>
 </head>
 <body>
+
+<!-- Maintenance screen (shown when MAINTENANCE_MODE is true, near top of the script) -->
+<div id="maintenanceScreen">
+  <div class="maint-card">
+    <div class="logo-tri maint-logo"></div>
+    <div class="maint-label">Under Maintenance</div>
+    <h2 class="maint-title">Adding New Features</h2>
+    <div class="maint-sub">We're upgrading this dashboard with some new tools. Your data is safe — check back shortly.</div>
+    <div class="maint-progress"><div class="maint-progress-bar"></div></div>
+    <div class="maint-dots"><span></span><span></span><span></span></div>
+  </div>
+</div>
 
 <header>
   <div style="display:flex;align-items:center;gap:14px;">
@@ -426,6 +455,9 @@
    Everything you add is stored only in your own browser's localStorage on
    this domain — nobody else who visits this URL sees your data. */
 const DEFAULT_DATA = [];
+
+/* Flip to false (and redeploy) to bring the dashboard back online. */
+const MAINTENANCE_MODE = true;
 
 const PREFS_KEY = 'trigon_triangle_prefs_v1';
 const SESSION_KEY = 'trigon_triangle_session_v1';
@@ -1242,7 +1274,11 @@ function refreshAll(){
   renderCalendar();
   renderTable();
 }
-initLockScreen();
+if(MAINTENANCE_MODE){
+  document.getElementById('maintenanceScreen').style.display = 'flex';
+} else {
+  initLockScreen();
+}
 </script>
 </body>
 </html>
