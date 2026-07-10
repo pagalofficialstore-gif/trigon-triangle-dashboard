@@ -844,7 +844,13 @@ function rowsFromParsedSheet(json){
     const dateRaw = get('date');
     if(dateRaw===undefined || dateRaw===null || dateRaw==='') return null;
     let dateStr;
-    if(dateRaw instanceof Date) dateStr = dateRaw.toISOString().slice(0,10);
+    if(dateRaw instanceof Date){
+      // Use LOCAL date components, not toISOString() (which is UTC) — SheetJS
+      // builds this Date from local y/m/d, so reading it back via UTC getters
+      // shifts the date a day off in timezones ahead of UTC (e.g. IST).
+      const y = dateRaw.getFullYear(), mo = dateRaw.getMonth()+1, d = dateRaw.getDate();
+      dateStr = `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    }
     else if(typeof dateRaw === 'number'){
       const d = XLSX.SSF ? XLSX.SSF.parse_date_code(dateRaw) : null;
       dateStr = d ? `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}` : String(dateRaw);
