@@ -91,8 +91,10 @@
   .pill.open{background:rgba(246,185,59,.15);color:var(--amber);}
   .r-pos{color:var(--green);font-weight:700;}
   .r-neg{color:var(--red);font-weight:700;}
-  .gold-outlook-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
-  .gold-outlook-icon{font-size:28px;line-height:1;flex-shrink:0;}
+  .gold-outlook-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--border);}
+  .gold-outlook-row:last-child{border-bottom:none;padding-bottom:0;}
+  .gold-outlook-row:first-child{padding-top:0;}
+  .gold-outlook-icon{font-size:28px;line-height:1;flex-shrink:0;min-width:36px;text-align:center;}
   .gold-outlook-badge{font-size:15px;font-weight:800;letter-spacing:.04em;padding:10px 18px;border-radius:6px;flex-shrink:0;}
   .gold-outlook-badge.gold-outlook-bullish{background:rgba(52,211,153,.15);color:var(--green);}
   .gold-outlook-badge.gold-outlook-bearish{background:rgba(251,90,117,.15);color:var(--red);}
@@ -400,20 +402,14 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
 <main id="dashboardPage" class="page active" style="display:block;">
   <div class="card" style="margin-bottom:22px;">
     <div class="econ-header">
-      <h3 style="margin:0;" id="outlookTitle">Gold (XAU/USD) Outlook — Today</h3>
+      <h3 style="margin:0;" id="outlookTitle">Outlook — Today</h3>
       <div class="econ-meta">
-        <select id="outlookInstrumentFilter" class="econ-ccy-filter" onchange="onOutlookInstrumentChange(this.value)">
-          <option value="gold">🥇 Gold</option>
-          <option value="eurusd">🇪🇺🇺🇸 EUR/USD</option>
-          <option value="gbpjpy">🇬🇧🇯🇵 GBP/JPY</option>
-          <option value="btcusd">₿ BTC/USD</option>
-        </select>
         <span id="goldOutlookUpdated"></span>
         <button class="ghost" onclick="loadGoldOutlook()">&#8635; Refresh</button>
       </div>
     </div>
     <div id="goldOutlookBody"><div class="econ-empty">Loading&hellip;</div></div>
-    <div class="hint" id="outlookHint">One combined, automated verdict — moving averages, momentum, RSI, range position and volume (the closest free proxy to order flow; no free source publishes real bid/ask depth), cross-checked against a second independent feed, plus today's high-impact USD news reads folded in where relevant. Not certified financial advice. Refreshes automatically every 5 minutes.</div>
+    <div class="hint" id="outlookHint">One combined, automated verdict per pair — moving averages, momentum, RSI, range position and volume (the closest free proxy to order flow; no free source publishes real bid/ask depth), cross-checked against a second independent feed, plus today's high-impact USD news reads folded in where relevant (not applied to GBP/JPY, a pure cross with no direct USD link). Not certified financial advice. Refreshes automatically every 5 minutes.</div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -1461,11 +1457,6 @@ const OUTLOOK_INSTRUMENTS = {
   gbpjpy: { key:'gbpjpy', label:'GBP/JPY',        yahoo:'GBPJPY=X',  stooq:'gbpjpy', newsOverlay:false, decimals:2, icon:'🇬🇧🇯🇵' },
   btcusd: { key:'btcusd', label:'BTC/USD',        yahoo:'BTC-USD',   stooq:'btcusd', newsOverlay:true,  decimals:2, icon:'₿' }
 };
-let outlookInstrument = 'gold';
-function onOutlookInstrumentChange(v){
-  outlookInstrument = OUTLOOK_INSTRUMENTS[v] ? v : 'gold';
-  loadGoldOutlook();
-}
 
 async function fetchGoldDaily(yahooSymbol){
   const target = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yahooSymbol||'GC=F') + '?interval=1d&range=3mo';
@@ -1657,21 +1648,47 @@ function buildGoldNote(a){
   return `${lead} (${tally}) — ${detail}${extras.length ? '. ' + extras.join('; ') + '.' : '.'}`;
 }
 
-function renderGoldOutlook(a){
+function renderGoldOutlookRow(instrumentCfg, a, usedCache, errorMsg){
+  if(!a){
+    return `<div class="gold-outlook-row">
+      <div class="gold-outlook-icon" title="${escapeHtml(instrumentCfg.label||'')}">${instrumentCfg.icon||''}</div>
+      <div class="gold-outlook-note">Could not load ${escapeHtml(instrumentCfg.label)} data${errorMsg ? ' — ' + escapeHtml(errorMsg) : ''}. Try Refresh.</div>
+    </div>`;
+  }
   const changeCls = a.changePct >= 0 ? 'r-pos' : 'r-neg';
   const changeStr = (a.changePct>=0?'+':'') + a.changePct.toFixed(2) + '%';
   const badgeLabel = a.confirmed ? ('CONFIRMED ' + a.view.toUpperCase()) : a.view.toUpperCase();
-  document.getElementById('goldOutlookBody').innerHTML = `
+  return `
     <div class="gold-outlook-row">
       <div class="gold-outlook-icon" title="${escapeHtml(a.label||'')}">${a.icon||''}</div>
       <div class="gold-outlook-badge gold-outlook-${a.cls}">${badgeLabel}</div>
       <div class="gold-outlook-price">
         <div class="v">${a.price.toFixed(a.decimals||2)}</div>
-        <div class="l ${changeCls}">${changeStr} vs. yesterday</div>
+        <div class="l ${changeCls}">${changeStr} vs. yesterday${usedCache ? ' · saved' : ''}</div>
       </div>
       <div class="gold-outlook-note">${escapeHtml(buildGoldNote(a))}</div>
     </div>
   `;
+}
+
+function paintOutlookFromCache(instruments, todayNewsEvents, body){
+  let any = false;
+  const html = instruments.map(cfg=>{
+    const cached = loadCachedJson('outlookCache_' + cfg.key);
+    if(cached && cached.data && cached.data.bars && cached.data.bars.length){
+      try{
+        const a = analyzeGoldOutlook(cached.data.bars, cached.data.secondaryRows, todayNewsEvents, cfg);
+        any = true;
+        return renderGoldOutlookRow(cfg, a, true, null);
+      }catch(e){ /* fall through to loading row */ }
+    }
+    return `<div class="gold-outlook-row">
+      <div class="gold-outlook-icon" title="${escapeHtml(cfg.label||'')}">${cfg.icon||''}</div>
+      <div class="gold-outlook-note">Loading ${escapeHtml(cfg.label)}&hellip;</div>
+    </div>`;
+  }).join('');
+  if(any){ body.innerHTML = html; return true; }
+  return false;
 }
 
 function withTimeout(promise, ms){
@@ -1681,44 +1698,60 @@ function withTimeout(promise, ms){
   ]);
 }
 
-async function loadGoldOutlook(){
-  const body = document.getElementById('goldOutlookBody');
-  if(!body) return;
-  const instrumentCfg = OUTLOOK_INSTRUMENTS[outlookInstrument] || OUTLOOK_INSTRUMENTS.gold;
-  const titleEl = document.getElementById('outlookTitle');
-  if(titleEl) titleEl.textContent = instrumentCfg.icon + ' ' + instrumentCfg.label + ' Outlook — Today';
-  const filterEl = document.getElementById('outlookInstrumentFilter');
-  if(filterEl && filterEl.value !== instrumentCfg.key) filterEl.value = instrumentCfg.key;
-
-  const now = new Date();
-  const todayUsdHigh = econAllEvents.filter(e => e.impact==='High' && (e.country||'').toUpperCase()==='USD' && isSameLocalDay(new Date(e.date), now));
-
+async function loadOneOutlookInstrument(instrumentCfg, todayNewsEvents){
   const cacheKey = 'outlookCache_' + instrumentCfg.key;
-  const cached = loadCachedJson(cacheKey);
-  if(cached && cached.data && cached.data.bars && cached.data.bars.length){
-    try{
-      const a = analyzeGoldOutlook(cached.data.bars, cached.data.secondaryRows, todayUsdHigh, instrumentCfg);
-      renderGoldOutlook(a);
-      document.getElementById('goldOutlookUpdated').textContent = 'Showing saved data — refreshing…';
-    }catch(e){ body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>'; }
-  } else {
-    body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
-  }
-
   try{
     const [bars, secondaryRows] = await Promise.all([
       withTimeout(fetchGoldDaily(instrumentCfg.yahoo), 20000),
       withTimeout(fetchGoldSecondary(instrumentCfg.stooq), 15000).catch(()=>null)
     ]);
     saveCachedJson(cacheKey, { bars, secondaryRows });
-    const a = analyzeGoldOutlook(bars, secondaryRows, todayUsdHigh, instrumentCfg);
-    renderGoldOutlook(a);
-    document.getElementById('goldOutlookUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    const result = analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents, instrumentCfg);
+    return { result, usedCache:false, errorMsg:null };
   }catch(err){
+    const cached = loadCachedJson(cacheKey);
     if(cached && cached.data && cached.data.bars && cached.data.bars.length){
-      document.getElementById('goldOutlookUpdated').textContent = 'Could not refresh — showing saved data from earlier.';
+      try{
+        const result = analyzeGoldOutlook(cached.data.bars, cached.data.secondaryRows, todayNewsEvents, instrumentCfg);
+        return { result, usedCache:true, errorMsg: err.message||String(err) };
+      }catch(e2){ /* fall through */ }
+    }
+    return { result:null, usedCache:false, errorMsg: err.message||String(err) };
+  }
+}
+
+async function loadGoldOutlook(){
+  const body = document.getElementById('goldOutlookBody');
+  if(!body) return;
+  const instruments = Object.values(OUTLOOK_INSTRUMENTS);
+  const now = new Date();
+  const todayUsdHigh = econAllEvents.filter(e => e.impact==='High' && (e.country||'').toUpperCase()==='USD' && isSameLocalDay(new Date(e.date), now));
+
+  const paintedFromCache = paintOutlookFromCache(instruments, todayUsdHigh, body);
+  const updEl = document.getElementById('goldOutlookUpdated');
+  if(paintedFromCache){ if(updEl) updEl.textContent = 'Showing saved data — refreshing…'; }
+  else { body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>'; }
+
+  const settled = await Promise.all(instruments.map(cfg => loadOneOutlookInstrument(cfg, todayUsdHigh)));
+  let anyOk = false, anyFallback = false;
+  const html = settled.map((res, i)=>{
+    const cfg = instruments[i];
+    if(res.result){
+      anyOk = true;
+      if(res.usedCache) anyFallback = true;
+      return renderGoldOutlookRow(cfg, res.result, res.usedCache, res.errorMsg);
+    }
+    anyFallback = true;
+    return renderGoldOutlookRow(cfg, null, false, res.errorMsg);
+  }).join('');
+  body.innerHTML = html;
+  if(updEl){
+    if(!anyOk){
+      updEl.textContent = 'Could not refresh — check your connection and try Refresh.';
+    } else if(anyFallback){
+      updEl.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) + ' (some pairs showing saved data)';
     } else {
-      body.innerHTML = '<div class="econ-error">Could not load ' + escapeHtml(instrumentCfg.label) + ' data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
+      updEl.textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
     }
   }
 }
