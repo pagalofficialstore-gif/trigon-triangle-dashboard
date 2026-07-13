@@ -92,6 +92,7 @@
   .r-pos{color:var(--green);font-weight:700;}
   .r-neg{color:var(--red);font-weight:700;}
   .gold-outlook-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
+  .gold-outlook-icon{font-size:28px;line-height:1;flex-shrink:0;}
   .gold-outlook-badge{font-size:15px;font-weight:800;letter-spacing:.04em;padding:10px 18px;border-radius:6px;flex-shrink:0;}
   .gold-outlook-badge.gold-outlook-bullish{background:rgba(52,211,153,.15);color:var(--green);}
   .gold-outlook-badge.gold-outlook-bearish{background:rgba(251,90,117,.15);color:var(--red);}
@@ -399,14 +400,20 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
 <main id="dashboardPage" class="page active" style="display:block;">
   <div class="card" style="margin-bottom:22px;">
     <div class="econ-header">
-      <h3 style="margin:0;">Gold (XAU/USD) Outlook — Today</h3>
+      <h3 style="margin:0;" id="outlookTitle">Gold (XAU/USD) Outlook — Today</h3>
       <div class="econ-meta">
+        <select id="outlookInstrumentFilter" class="econ-ccy-filter" onchange="onOutlookInstrumentChange(this.value)">
+          <option value="gold">🥇 Gold</option>
+          <option value="eurusd">🇪🇺🇺🇸 EUR/USD</option>
+          <option value="gbpjpy">🇬🇧🇯🇵 GBP/JPY</option>
+          <option value="btcusd">₿ BTC/USD</option>
+        </select>
         <span id="goldOutlookUpdated"></span>
         <button class="ghost" onclick="loadGoldOutlook()">&#8635; Refresh</button>
       </div>
     </div>
     <div id="goldOutlookBody"><div class="econ-empty">Loading&hellip;</div></div>
-    <div class="hint">One combined, automated verdict — moving averages, momentum, RSI, range position and volume (the closest free proxy to order flow; no free source publishes real bid/ask depth) on CME gold futures (GC=F), cross-checked against a second independent XAU/USD feed, plus today's high-impact USD news reads folded in. Not certified financial advice. Refreshes automatically every 5 minutes.</div>
+    <div class="hint" id="outlookHint">One combined, automated verdict — moving averages, momentum, RSI, range position and volume (the closest free proxy to order flow; no free source publishes real bid/ask depth), cross-checked against a second independent feed, plus today's high-impact USD news reads folded in where relevant. Not certified financial advice. Refreshes automatically every 5 minutes.</div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -1389,9 +1396,29 @@ function startEconAutoRefresh(){
  * All signals are summed into one score and one labeled verdict. Still an automated
  * heuristic (no bundled AI/LLM key in this free app), not certified financial advice —
  * but it is the single best read the dashboard can produce from everything it can
- * reach, refreshed every 5 minutes. */
-async function fetchGoldDaily(){
-  const target = 'https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=3mo';
+ * reach, refreshed every 5 minutes.
+ *
+ * Covers four instruments via a small filter (Gold is default): Gold (XAU/USD),
+ * EUR/USD, GBP/JPY and BTC/USD. The technical + cross-check machinery is identical
+ * for all four. The fundamental USD-news overlay only applies where it's a real,
+ * direct relationship (Gold and EUR/USD move opposite to USD strength; BTC/USD
+ * leans the same loose risk-on/risk-off way) — GBP/JPY is a pure cross with no
+ * direct USD linkage, so that overlay is honestly left out for it rather than
+ * forcing a relationship that isn't really there. */
+const OUTLOOK_INSTRUMENTS = {
+  gold:   { key:'gold',   label:'Gold (XAU/USD)', yahoo:'GC=F',      stooq:'xauusd', newsOverlay:true,  decimals:2, icon:'🥇' },
+  eurusd: { key:'eurusd', label:'EUR/USD',        yahoo:'EURUSD=X',  stooq:'eurusd', newsOverlay:true,  decimals:4, icon:'🇪🇺🇺🇸' },
+  gbpjpy: { key:'gbpjpy', label:'GBP/JPY',        yahoo:'GBPJPY=X',  stooq:'gbpjpy', newsOverlay:false, decimals:2, icon:'🇬🇧🇯🇵' },
+  btcusd: { key:'btcusd', label:'BTC/USD',        yahoo:'BTC-USD',   stooq:'btcusd', newsOverlay:true,  decimals:2, icon:'₿' }
+};
+let outlookInstrument = 'gold';
+function onOutlookInstrumentChange(v){
+  outlookInstrument = OUTLOOK_INSTRUMENTS[v] ? v : 'gold';
+  loadGoldOutlook();
+}
+
+async function fetchGoldDaily(yahooSymbol){
+  const target = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yahooSymbol||'GC=F') + '?interval=1d&range=3mo';
   let lastErr;
   for(const wrap of FF_PROXIES){
     const controller = new AbortController();
@@ -1419,11 +1446,11 @@ async function fetchGoldDaily(){
   throw lastErr || new Error('All gold data sources failed');
 }
 
-/* Secondary, independent cross-check feed: free daily spot XAU/USD candles from Stooq.
- * Purely a confirmation signal — if it can't be reached, the read still proceeds on
- * the primary Yahoo technical picture and the news overlay. */
-async function fetchGoldSecondary(){
-  const target = 'https://stooq.com/q/d/l/?s=xauusd&i=d';
+/* Secondary, independent cross-check feed: free daily candles from Stooq for whichever
+ * instrument is selected. Purely a confirmation signal — if it can't be reached, the
+ * read still proceeds on the primary Yahoo technical picture and the news overlay. */
+async function fetchGoldSecondary(stooqSymbol){
+  const target = 'https://stooq.com/q/d/l/?s=' + encodeURIComponent(stooqSymbol||'xauusd') + '&i=d';
   let lastErr;
   for(const wrap of FF_PROXIES){
     const controller = new AbortController();
@@ -1482,7 +1509,8 @@ function momentumPct(closes, n){
   return (closes[closes.length-1]-then)/then*100;
 }
 
-function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
+function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents, instrumentCfg){
+  instrumentCfg = instrumentCfg || OUTLOOK_INSTRUMENTS.gold;
   if(!bars || bars.length < 12) throw new Error('Not enough data');
   const closes = bars.map(b=>b.close);
   const last = bars[bars.length-1];
@@ -1528,7 +1556,7 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
     vote(hh?1:ll?-1:0, 1, 'making a higher high and higher low vs. yesterday', 'making a lower high and lower low vs. yesterday');
   }
 
-  // Cross-check against a second, independent XAU/USD feed.
+  // Cross-check against a second, independent feed for the same instrument.
   let secondaryNote = null, secondaryAgreed = false;
   if(secondaryRows && secondaryRows.length >= 6){
     const sCloses = secondaryRows.map(r=>r.close);
@@ -1538,17 +1566,20 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
       const secDir = Math.sign(sShort-sLong);
       if(secDir === priorDir){
         score += secDir; if(secDir>0) bullishCount++; else bearishCount++;
-        secondaryNote = 'a second independent XAU/USD feed confirms the same direction';
+        secondaryNote = 'a second independent ' + instrumentCfg.label + ' feed confirms the same direction';
         secondaryAgreed = true;
       } else {
-        secondaryNote = 'a second independent XAU/USD feed leans the other way, tempering confidence';
+        secondaryNote = 'a second independent ' + instrumentCfg.label + ' feed leans the other way, tempering confidence';
       }
     }
   }
 
-  // Fold in today's high-impact USD news reads (fundamentals), weighted higher than a single technical signal.
+  // Fold in today's high-impact USD news reads (fundamentals), weighted higher than a single
+  // technical signal — only for instruments where USD strength has a real, direct bearing
+  // (Gold, EUR/USD, BTC/USD). GBP/JPY is a pure cross with no direct USD linkage, so this
+  // overlay is skipped for it rather than forcing a relationship that isn't really there.
   let newsNote = null;
-  if(todayNewsEvents && todayNewsEvents.length){
+  if(instrumentCfg.newsOverlay && todayNewsEvents && todayNewsEvents.length){
     let newsScore = 0;
     todayNewsEvents.forEach(e=>{
       const g = classifyGoldImpact(e);
@@ -1558,9 +1589,9 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
     const dir = Math.sign(newsScore);
     if(dir !== 0){
       score += dir*2; if(dir>0) bullishCount++; else bearishCount++;
-      newsNote = "today's high-impact USD news reads net " + (dir>0?'positive':'negative') + ' for gold';
+      newsNote = "today's high-impact USD news reads net " + (dir>0?'positive':'negative') + ' for ' + instrumentCfg.label;
     } else if(newsScore===0 && todayNewsEvents.length){
-      newsNote = "today's high-impact USD news reads are mixed for gold";
+      newsNote = "today's high-impact USD news reads are mixed for " + instrumentCfg.label;
     }
   }
 
@@ -1581,7 +1612,7 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
   const confirmed = view !== 'Neutral' && (secondaryAgreed || strongMajority);
 
   const changePct = prev ? ((last.close - prev.close)/prev.close*100) : 0;
-  return { view, cls, price:last.close, changePct, signals, score, bullishCount, bearishCount, secondaryNote, newsNote, confirmed };
+  return { view, cls, price:last.close, changePct, signals, score, bullishCount, bearishCount, secondaryNote, newsNote, confirmed, decimals: instrumentCfg.decimals||2, icon: instrumentCfg.icon||'', label: instrumentCfg.label };
 }
 
 function buildGoldNote(a){
@@ -1600,9 +1631,10 @@ function renderGoldOutlook(a){
   const badgeLabel = a.confirmed ? ('CONFIRMED ' + a.view.toUpperCase()) : a.view.toUpperCase();
   document.getElementById('goldOutlookBody').innerHTML = `
     <div class="gold-outlook-row">
+      <div class="gold-outlook-icon" title="${escapeHtml(a.label||'')}">${a.icon||''}</div>
       <div class="gold-outlook-badge gold-outlook-${a.cls}">${badgeLabel}</div>
       <div class="gold-outlook-price">
-        <div class="v">${a.price.toFixed(2)}</div>
+        <div class="v">${a.price.toFixed(a.decimals||2)}</div>
         <div class="l ${changeCls}">${changeStr} vs. yesterday</div>
       </div>
       <div class="gold-outlook-note">${escapeHtml(buildGoldNote(a))}</div>
@@ -1620,6 +1652,11 @@ function withTimeout(promise, ms){
 async function loadGoldOutlook(){
   const body = document.getElementById('goldOutlookBody');
   if(!body) return;
+  const instrumentCfg = OUTLOOK_INSTRUMENTS[outlookInstrument] || OUTLOOK_INSTRUMENTS.gold;
+  const titleEl = document.getElementById('outlookTitle');
+  if(titleEl) titleEl.textContent = instrumentCfg.icon + ' ' + instrumentCfg.label + ' Outlook — Today';
+  const filterEl = document.getElementById('outlookInstrumentFilter');
+  if(filterEl && filterEl.value !== instrumentCfg.key) filterEl.value = instrumentCfg.key;
   body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
   try{
     // Reuse whatever the news card has already cached — don't re-fetch the calendar
@@ -1628,14 +1665,14 @@ async function loadGoldOutlook(){
     const todayUsdHigh = econAllEvents.filter(e => e.impact==='High' && (e.country||'').toUpperCase()==='USD' && isSameLocalDay(new Date(e.date), now));
 
     const [bars, secondaryRows] = await Promise.all([
-      withTimeout(fetchGoldDaily(), 20000),
-      withTimeout(fetchGoldSecondary(), 15000).catch(()=>null)
+      withTimeout(fetchGoldDaily(instrumentCfg.yahoo), 20000),
+      withTimeout(fetchGoldSecondary(instrumentCfg.stooq), 15000).catch(()=>null)
     ]);
-    const a = analyzeGoldOutlook(bars, secondaryRows, todayUsdHigh);
+    const a = analyzeGoldOutlook(bars, secondaryRows, todayUsdHigh, instrumentCfg);
     renderGoldOutlook(a);
     document.getElementById('goldOutlookUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   }catch(err){
-    body.innerHTML = '<div class="econ-error">Could not load gold data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
+    body.innerHTML = '<div class="econ-error">Could not load ' + escapeHtml(instrumentCfg.label) + ' data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
   }
 }
 
