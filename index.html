@@ -406,7 +406,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       </div>
     </div>
     <div id="goldOutlookBody"><div class="econ-empty">Loading&hellip;</div></div>
-    <div class="hint">Automated technical read on CME gold futures (GC=F, tracks XAU/USD closely) via free Yahoo Finance data — trend and momentum based, not financial advice. Refreshes automatically every 5 minutes.</div>
+    <div class="hint">One combined, automated verdict — moving averages, momentum, RSI and range position on CME gold futures (GC=F), cross-checked against a second independent XAU/USD feed, plus today's high-impact USD news reads folded in. Not certified financial advice. Refreshes automatically every 5 minutes.</div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -1375,12 +1375,21 @@ function startEconAutoRefresh(){
   econAutoRefreshTimer = setInterval(loadEconomicCalendar, 5 * 60 * 1000);
 }
 
-/* ===================== Gold (XAU/USD) daily outlook (heuristic) =====================
- * Free daily candles for CME gold futures (GC=F, tracks XAU/USD closely) from Yahoo
- * Finance's public chart endpoint, routed through the same CORS relays used for the
- * news calendar above. A simple moving-average + momentum + candle-structure heuristic
- * turns that into a Bullish/Bearish/Neutral read for the day. This is an automated
- * technical read, not certified financial advice. */
+/* ===================== Gold (XAU/USD) daily outlook (multi-signal, confirmed) =====================
+ * Combines everything the free stack can reach into ONE confirmed daily verdict:
+ *  - Technical: CME gold futures (GC=F) daily candles from Yahoo Finance — 10/20/30-day
+ *    moving averages, 3-day and 5-day momentum, RSI(14), position within the 20-day
+ *    trading range, and prior-day candle structure (higher high/low).
+ *  - Cross-check: a second, independent spot XAU/USD feed (Stooq) — if its own
+ *    short-term trend agrees with the primary technical read, that adds confidence;
+ *    if it disagrees, that's called out in the note instead of hidden.
+ *  - Fundamental: today's high-impact USD news, already classified by the Gold-impact
+ *    reader used in the news card above (classifyGoldImpact / econAllEvents), folded
+ *    in as a weighted vote (fundamentals can outweigh a purely technical picture).
+ * All signals are summed into one score and one labeled verdict. Still an automated
+ * heuristic (no bundled AI/LLM key in this free app), not certified financial advice —
+ * but it is the single best read the dashboard can produce from everything it can
+ * reach, refreshed every 5 minutes. */
 async function fetchGoldDaily(){
   const target = 'https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=3mo';
   let lastErr;
@@ -1407,49 +1416,152 @@ async function fetchGoldDaily(){
   throw lastErr || new Error('All gold data sources failed');
 }
 
+/* Secondary, independent cross-check feed: free daily spot XAU/USD candles from Stooq.
+ * Purely a confirmation signal — if it can't be reached, the read still proceeds on
+ * the primary Yahoo technical picture and the news overlay. */
+async function fetchGoldSecondary(){
+  const target = 'https://stooq.com/q/d/l/?s=xauusd&i=d';
+  let lastErr;
+  for(const wrap of FF_PROXIES){
+    try{
+      const resp = await fetch(wrap(target), { cache:'no-store' });
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      const text = await resp.text();
+      const lines = text.trim().split('\n').filter(Boolean);
+      if(lines.length < 3) throw new Error('No secondary data');
+      const rows = lines.slice(1).map(l=>{
+        const parts = l.split(',');
+        return { date: parts[0], close: parseFloat(parts[4]) };
+      }).filter(r=>!isNaN(r.close));
+      if(rows.length < 6) throw new Error('Not enough secondary data');
+      return rows;
+    }catch(e){ lastErr = e; }
+  }
+  return null;
+}
+
 function sma(arr, period){
   if(arr.length < period) return null;
   const slice = arr.slice(-period);
   return slice.reduce((a,b)=>a+b,0)/period;
 }
 
-function analyzeGoldOutlook(bars){
+function rsi(closes, period){
+  period = period || 14;
+  if(closes.length < period+1) return null;
+  let gains = 0, losses = 0;
+  for(let i=closes.length-period;i<closes.length;i++){
+    const diff = closes[i]-closes[i-1];
+    if(diff >= 0) gains += diff; else losses -= diff;
+  }
+  if(gains===0 && losses===0) return 50;
+  if(losses===0) return 100;
+  const rs = (gains/period)/(losses/period);
+  return 100 - (100/(1+rs));
+}
+
+function rangePosition(bars, lookback){
+  const slice = bars.slice(-lookback);
+  if(slice.length < 2) return null;
+  const hi = Math.max(...slice.map(b=>b.high));
+  const lo = Math.min(...slice.map(b=>b.low));
+  if(hi === lo) return 0.5;
+  return (bars[bars.length-1].close - lo) / (hi - lo);
+}
+
+function momentumPct(closes, n){
+  if(closes.length <= n) return null;
+  const then = closes[closes.length-1-n];
+  if(!then) return null;
+  return (closes[closes.length-1]-then)/then*100;
+}
+
+function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
   if(!bars || bars.length < 12) throw new Error('Not enough data');
   const closes = bars.map(b=>b.close);
   const last = bars[bars.length-1];
   const prev = bars[bars.length-2];
   const sma10 = sma(closes, 10);
+  const sma20 = sma(closes, Math.min(20, closes.length-1));
   const sma30 = sma(closes, Math.min(30, closes.length-1));
+  const rsi14 = rsi(closes, 14);
+  const rangePos = rangePosition(bars, 20);
+  const mom3 = momentumPct(closes, 3);
+  const mom5 = momentumPct(closes, 5);
 
-  let score = 0;
+  let score = 0, bullishCount = 0, bearishCount = 0;
   const signals = [];
-  if(sma10 !== null && sma30 !== null){
-    if(sma10 > sma30){ score++; signals.push('short-term average above the medium-term average'); }
-    else if(sma10 < sma30){ score--; signals.push('short-term average below the medium-term average'); }
-  }
-  if(sma10 !== null){
-    if(last.close > sma10){ score++; signals.push('price trading above its 10-day average'); }
-    else { score--; signals.push('price trading below its 10-day average'); }
-  }
+  const vote = (dir, weight, upLabel, downLabel) => {
+    if(dir === null || dir === undefined || dir === 0) return;
+    score += dir * weight;
+    if(dir > 0){ bullishCount++; signals.push(upLabel); }
+    else { bearishCount++; signals.push(downLabel); }
+  };
+
+  vote(sma10!==null && sma30!==null ? Math.sign(sma10-sma30) : null, 1, 'short-term average above the medium-term average', 'short-term average below the medium-term average');
+  vote(sma20!==null ? Math.sign(last.close-sma20) : null, 1, 'price above its 20-day average', 'price below its 20-day average');
+  vote(sma10!==null ? Math.sign(last.close-sma10) : null, 1, 'price above its 10-day average', 'price below its 10-day average');
+  vote(mom3!==null && Math.abs(mom3)>0.1 ? Math.sign(mom3) : null, 1, 'positive 3-day momentum', 'negative 3-day momentum');
+  vote(mom5!==null && Math.abs(mom5)>0.1 ? Math.sign(mom5) : null, 1, 'positive 5-day momentum', 'negative 5-day momentum');
+  vote(rsi14!==null && Math.abs(rsi14-50)>5 ? Math.sign(rsi14-50) : null, 1, 'RSI(14) favoring buyers', 'RSI(14) favoring sellers');
+  vote(rangePos!==null && Math.abs(rangePos-0.5)>0.1 ? Math.sign(rangePos-0.5) : null, 1, 'trading in the upper part of its 20-day range', 'trading in the lower part of its 20-day range');
   if(prev){
-    if(last.close > prev.close){ score++; signals.push('higher than the prior close'); }
-    else if(last.close < prev.close){ score--; signals.push('lower than the prior close'); }
-    if(last.high > prev.high && last.low > prev.low){ score++; signals.push('making a higher high and higher low vs. yesterday'); }
-    else if(last.high < prev.high && last.low < prev.low){ score--; signals.push('making a lower high and lower low vs. yesterday'); }
+    vote(Math.sign(last.close-prev.close), 1, 'higher than the prior close', 'lower than the prior close');
+    const hh = last.high>prev.high && last.low>prev.low;
+    const ll = last.high<prev.high && last.low<prev.low;
+    vote(hh?1:ll?-1:0, 1, 'making a higher high and higher low vs. yesterday', 'making a lower high and lower low vs. yesterday');
+  }
+
+  // Cross-check against a second, independent XAU/USD feed.
+  let secondaryNote = null;
+  if(secondaryRows && secondaryRows.length >= 6){
+    const sCloses = secondaryRows.map(r=>r.close);
+    const sShort = sma(sCloses, 5), sLong = sma(sCloses, Math.min(15, sCloses.length-1));
+    const priorDir = Math.sign(score);
+    if(sShort!==null && sLong!==null && sShort!==sLong && priorDir!==0){
+      const secDir = Math.sign(sShort-sLong);
+      if(secDir === priorDir){
+        score += secDir; if(secDir>0) bullishCount++; else bearishCount++;
+        secondaryNote = 'a second independent XAU/USD feed confirms the same direction';
+      } else {
+        secondaryNote = 'a second independent XAU/USD feed leans the other way, tempering confidence';
+      }
+    }
+  }
+
+  // Fold in today's high-impact USD news reads (fundamentals), weighted higher than a single technical signal.
+  let newsNote = null;
+  if(todayNewsEvents && todayNewsEvents.length){
+    let newsScore = 0;
+    todayNewsEvents.forEach(e=>{
+      const g = classifyGoldImpact(e);
+      if(g.cls==='bullish') newsScore++;
+      else if(g.cls==='bearish') newsScore--;
+    });
+    const dir = Math.sign(newsScore);
+    if(dir !== 0){
+      score += dir*2; if(dir>0) bullishCount++; else bearishCount++;
+      newsNote = "today's high-impact USD news reads net " + (dir>0?'positive':'negative') + ' for gold';
+    } else if(newsScore===0 && todayNewsEvents.length){
+      newsNote = "today's high-impact USD news reads are mixed for gold";
+    }
   }
 
   let view, cls;
-  if(score >= 2){ view='Bullish'; cls='bullish'; }
-  else if(score <= -2){ view='Bearish'; cls='bearish'; }
+  if(score >= 3){ view='Bullish'; cls='bullish'; }
+  else if(score <= -3){ view='Bearish'; cls='bearish'; }
   else { view='Neutral'; cls='neutral'; }
 
   const changePct = prev ? ((last.close - prev.close)/prev.close*100) : 0;
-  return { view, cls, price:last.close, changePct, signals, score };
+  return { view, cls, price:last.close, changePct, signals, score, bullishCount, bearishCount, secondaryNote, newsNote };
 }
 
 function buildGoldNote(a){
-  const lead = a.view==='Bullish' ? 'Short-term structure favors buyers today' : a.view==='Bearish' ? 'Short-term structure favors sellers today' : 'Signals are mixed today, no clear edge either way';
-  return lead + ' — ' + a.signals.join(', ') + '.';
+  const lead = a.view==='Bullish' ? 'Confirmed bullish read' : a.view==='Bearish' ? 'Confirmed bearish read' : 'Confirmed neutral read — no clear edge';
+  const tally = `${a.bullishCount} bullish vs. ${a.bearishCount} bearish signals`;
+  const detail = a.signals.length ? a.signals.slice(0,4).join(', ') : 'limited data available';
+  const extras = [a.secondaryNote, a.newsNote].filter(Boolean);
+  return `${lead} (${tally}) — ${detail}${extras.length ? '. ' + extras.join('; ') + '.' : '.'}`;
 }
 
 function renderGoldOutlook(a){
@@ -1457,7 +1569,7 @@ function renderGoldOutlook(a){
   const changeStr = (a.changePct>=0?'+':'') + a.changePct.toFixed(2) + '%';
   document.getElementById('goldOutlookBody').innerHTML = `
     <div class="gold-outlook-row">
-      <div class="gold-outlook-badge gold-outlook-${a.cls}">${a.view.toUpperCase()}</div>
+      <div class="gold-outlook-badge gold-outlook-${a.cls}">CONFIRMED ${a.view.toUpperCase()}</div>
       <div class="gold-outlook-price">
         <div class="v">${a.price.toFixed(2)}</div>
         <div class="l ${changeCls}">${changeStr} vs. yesterday</div>
@@ -1472,10 +1584,19 @@ async function loadGoldOutlook(){
   if(!body) return;
   body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
   try{
-    const bars = await fetchGoldDaily();
-    const a = analyzeGoldOutlook(bars);
+    if(!econAllEvents.length){
+      try{ await loadEconomicCalendar(); }catch(e){}
+    }
+    const now = new Date();
+    const todayUsdHigh = econAllEvents.filter(e => e.impact==='High' && (e.country||'').toUpperCase()==='USD' && isSameLocalDay(new Date(e.date), now));
+
+    const [bars, secondaryRows] = await Promise.all([
+      fetchGoldDaily(),
+      fetchGoldSecondary().catch(()=>null)
+    ]);
+    const a = analyzeGoldOutlook(bars, secondaryRows, todayUsdHigh);
     renderGoldOutlook(a);
-    document.getElementById('goldOutlookUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    document.getElementById('goldOutlookUpdated').textContent = 'Confirmed ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   }catch(err){
     body.innerHTML = '<div class="econ-error">Could not load gold data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
   }
