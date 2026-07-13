@@ -168,6 +168,14 @@
   .econ-vals{display:flex;gap:8px;font-size:10.5px;color:var(--muted);flex-shrink:0;white-space:nowrap;}
   .econ-empty{color:var(--muted);font-size:12px;padding:8px 0;}
   .econ-error{color:var(--red);font-size:12px;padding:8px 0;}
+  .econ-row-wrap{border-bottom:1px solid #1e212a;}
+  .econ-row-wrap:last-child{border-bottom:none;}
+  .econ-row-wrap .econ-row{border-bottom:none;padding-bottom:2px;}
+  .econ-gold-tag{font-size:10.5px;font-weight:700;letter-spacing:.02em;padding:0 0 9px 26px;cursor:help;}
+  .econ-gold-tag.econ-gold-bullish{color:var(--green);}
+  .econ-gold-tag.econ-gold-bearish{color:var(--red);}
+  .econ-gold-tag.econ-gold-neutral{color:var(--muted);}
+  .econ-gold-tag.econ-gold-watch{color:var(--amber);}
   @media (max-width:720px){ .econ-grid{grid-template-columns:1fr;gap:18px;} .econ-vals{display:none;} }
   a.link{color:var(--accent);text-decoration:none;}
 
@@ -382,7 +390,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
 
   <div class="card" style="margin-bottom:22px;">
     <div class="econ-header">
-      <h3 style="margin:0;">Red Folder News (High Impact)</h3>
+      <h3 style="margin:0;">USD Red Folder News (High Impact)</h3>
       <div class="econ-meta">
         <span id="econUpdated"></span>
         <button class="ghost" onclick="loadEconomicCalendar()">&#8635; Refresh</button>
@@ -398,7 +406,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
         <div id="econTomorrow"><div class="econ-empty">Loading&hellip;</div></div>
       </div>
     </div>
-    <div class="hint">Source: Forex Factory's public calendar feed (unofficial, community-used). High-impact ("red folder") events only, shown in your local time.</div>
+    <div class="hint">Source: Forex Factory's public calendar feed (unofficial, community-used). High-impact ("red folder") USD events only, shown in your local time. The Gold-impact tag is an automated read on actual-vs-forecast (not certified financial advice) — hover a tag for the reasoning. Refreshes automatically every 5 minutes.</div>
   </div>
 
   <div class="card" style="margin-bottom:22px;">
@@ -1185,18 +1193,65 @@ function isSameLocalDay(d1, d2){
   return d1.getFullYear()===d2.getFullYear() && d1.getMonth()===d2.getMonth() && d1.getDate()===d2.getDate();
 }
 
+/* ===================== Gold-impact analysis (heuristic) =====================
+ * There's no bundled AI/LLM API key in this free client-side app, so this is a
+ * transparent rule-based read on "does this USD data point typically push gold
+ * up or down", based on whether the actual figure beat or missed forecast:
+ *  - Growth/inflation-style data (NFP, CPI, GDP, retail sales, ISM, etc.) beating
+ *    forecast = stronger dollar = usually bearish for gold, and vice versa.
+ *  - Jobless-claims-style data is the inverse (more claims = weaker economy =
+ *    usually bullish for gold).
+ *  - Rate decisions/FOMC statements are flagged "Watch" since the market reacts
+ *    to tone/guidance, not a single beat-or-miss number.
+ *  - If there's no actual figure yet (event hasn't printed), it's "Pending". */
+const GOLD_INVERSE_KEYWORDS = ['non-farm','nonfarm','employment change','payroll','cpi','ppi','retail sales','gdp','ism manufacturing','ism services','ism non-manufacturing','consumer confidence','durable goods','housing starts','building permits','industrial production','pmi'];
+const GOLD_DIRECT_KEYWORDS = ['unemployment rate','jobless claims','unemployment claims','continuing claims'];
+const GOLD_WATCH_KEYWORDS = ['fed funds rate','interest rate decision','fomc','rate decision','monetary policy statement','press conference'];
+
+function parseEconNum(s){
+  if(s===null || s===undefined || s==='') return null;
+  const m = String(s).replace(/,/g,'').match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+function classifyGoldImpact(e){
+  const title = (e.title||'').toLowerCase();
+  if(GOLD_WATCH_KEYWORDS.some(k=>title.includes(k))){
+    return { label:'Watch for Gold', cls:'watch', note:'Rate/policy event — gold reacts to tone and guidance, not just one number.' };
+  }
+  const actual = parseEconNum(e.actual);
+  const forecast = parseEconNum(e.forecast);
+  if(actual===null || forecast===null){
+    return { label:'Pending', cls:'watch', note:'Waiting for the actual figure to print before this can be read.' };
+  }
+  if(actual===forecast){
+    return { label:'Neutral for Gold', cls:'neutral', note:'In line with forecast — limited surprise, so limited market reaction expected.' };
+  }
+  const beat = actual > forecast;
+  const direct = GOLD_DIRECT_KEYWORDS.some(k=>title.includes(k));
+  const bullish = direct ? beat : !beat;
+  return bullish
+    ? { label:'Bullish for Gold', cls:'bullish', note: (beat?'Beat':'Missed') + ' forecast — historically a headwind for the dollar, supportive for gold.' }
+    : { label:'Bearish for Gold', cls:'bearish', note: (beat?'Beat':'Missed') + ' forecast — historically strengthens the dollar, a headwind for gold.' };
+}
+
 function econRowHtml(e){
   const d = new Date(e.date);
   const time = isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   const vals = [];
+  if(e.actual) vals.push(`A: ${escapeHtml(e.actual)}`);
   if(e.forecast) vals.push(`F: ${escapeHtml(e.forecast)}`);
   if(e.previous) vals.push(`P: ${escapeHtml(e.previous)}`);
-  return `<div class="econ-row">
-    <span class="econ-impact" title="High impact"></span>
-    <span class="econ-time">${time}</span>
-    <span class="econ-ccy">${escapeHtml(e.country||'—')}</span>
-    <span class="econ-title">${escapeHtml(e.title||'—')}</span>
-    <span class="econ-vals">${vals.join(' &middot; ')}</span>
+  const gold = classifyGoldImpact(e);
+  return `<div class="econ-row-wrap">
+    <div class="econ-row">
+      <span class="econ-impact" title="High impact"></span>
+      <span class="econ-time">${time}</span>
+      <span class="econ-ccy">${escapeHtml(e.country||'—')}</span>
+      <span class="econ-title">${escapeHtml(e.title||'—')}</span>
+      <span class="econ-vals">${vals.join(' &middot; ')}</span>
+    </div>
+    <div class="econ-gold-tag econ-gold-${gold.cls}" title="${escapeHtml(gold.note)}">${gold.label}</div>
   </div>`;
 }
 
@@ -1220,23 +1275,29 @@ async function loadEconomicCalendar(){
     if(nextWeek.status==='fulfilled') all = all.concat(nextWeek.value);
     if(!all.length) throw (thisWeek.reason || nextWeek.reason || new Error('No calendar data available'));
 
-    const highImpact = all.filter(e => e.impact === 'High');
+    const highImpact = all.filter(e => e.impact === 'High' && (e.country||'').toUpperCase() === 'USD');
     const byTime = (a,b)=> new Date(a.date) - new Date(b.date);
     const todayEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), now)).sort(byTime);
     const tomorrowEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), tomorrow)).sort(byTime);
 
     document.getElementById('econToday').innerHTML = todayEvents.length
       ? todayEvents.map(econRowHtml).join('')
-      : '<div class="econ-empty">No high-impact events today.</div>';
+      : '<div class="econ-empty">No high-impact USD events today.</div>';
     document.getElementById('econTomorrow').innerHTML = tomorrowEvents.length
       ? tomorrowEvents.map(econRowHtml).join('')
-      : '<div class="econ-empty">No high-impact events tomorrow.</div>';
+      : '<div class="econ-empty">No high-impact USD events tomorrow.</div>';
     document.getElementById('econUpdated').textContent = 'Updated ' + now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   }catch(err){
     const msg = '<div class="econ-error">Could not load the calendar (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
     document.getElementById('econToday').innerHTML = msg;
     document.getElementById('econTomorrow').innerHTML = msg;
   }
+}
+
+let econAutoRefreshTimer = null;
+function startEconAutoRefresh(){
+  if(econAutoRefreshTimer) return;
+  econAutoRefreshTimer = setInterval(loadEconomicCalendar, 5 * 60 * 1000);
 }
 
 /* ===================== Stats ===================== */
@@ -1941,6 +2002,7 @@ if(MAINTENANCE_MODE){
 } else {
   initLockScreen();
 }
+startEconAutoRefresh();
 </script>
 </body>
 </html>
