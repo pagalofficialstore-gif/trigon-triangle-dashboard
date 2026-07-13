@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trigon Triangle — Strategy Accuracy Dashboard</title>
+<title>Strategy Accuracy Test</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -410,7 +410,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
         <div id="econTomorrow"><div class="econ-empty">Loading&hellip;</div></div>
       </div>
     </div>
-    <div class="hint">Source: Forex Factory's public calendar feed (unofficial, community-used). High-impact ("red folder") events, shown in your local time — use the currency filter above to switch away from USD or see all currencies. The Gold-impact tag is an automated read (not certified financial advice): before an event prints it compares forecast vs. previous to lean a direction, then switches to actual-vs-forecast once the real number is out — hover a tag for the reasoning. Refreshes automatically every 5 minutes.</div>
+    <div class="hint">Source: Forex Factory's public calendar feed (unofficial, community-used). High-impact ("red folder") events, shown in your local time — use the currency filter above to switch away from USD or see all currencies. The Gold-impact tag is an automated read (not certified financial advice): before an event prints, it's a "Leaning Positive/Negative for Gold" estimate from forecast vs. previous; once the actual number is out, it flips to a "Confirmed Positive/Negative for Gold" tag based on actual-vs-forecast — hover a tag for the reasoning. Refreshes automatically every 5 minutes.</div>
   </div>
 
   <div class="card" style="margin-bottom:22px;">
@@ -1202,9 +1202,10 @@ function isSameLocalDay(d1, d2){
  * transparent rule-based read on "does this data point typically push gold up
  * or down for its currency", applied at two stages:
  *  - BEFORE the event prints: compares forecast vs. previous to lean a
- *    direction ahead of the release ("Leaning Bullish/Bearish for Gold").
+ *    direction ahead of the release ("Leaning Positive/Negative for Gold").
  *  - AFTER the actual figure is out: compares actual vs. forecast, which is
- *    the number that actually moves markets ("Bullish/Bearish for Gold").
+ *    the number that actually moves markets ("Confirmed Positive/Negative
+ *    for Gold").
  * Growth/inflation-style data (NFP, CPI, GDP, retail sales, ISM, etc.) coming
  * in stronger = stronger currency = usually bearish for gold, and vice versa.
  * Jobless-claims-style data is the inverse (more claims = weaker economy =
@@ -1230,28 +1231,28 @@ function classifyGoldImpact(e){
   const forecast = parseEconNum(e.forecast);
   const previous = parseEconNum(e.previous);
 
-  // Post-release: the actual figure is out, so read it against forecast.
+  // Post-release: the actual figure is out, so this is the confirmed read.
   if(actual !== null && forecast !== null){
     if(actual === forecast){
-      return { label:'Neutral for Gold', cls:'neutral', note:'Came in line with forecast — limited surprise, so limited market reaction expected.' };
+      return { label:'Confirmed Neutral for Gold', cls:'neutral', note:'Came in line with forecast — limited surprise, so limited market reaction expected.' };
     }
     const beat = actual > forecast;
-    const bullish = direct ? beat : !beat;
-    return bullish
-      ? { label:'Bullish for Gold', cls:'bullish', note: (beat?'Beat':'Missed') + ' forecast — historically a headwind for the currency, supportive for gold.' }
-      : { label:'Bearish for Gold', cls:'bearish', note: (beat?'Beat':'Missed') + ' forecast — historically strengthens the currency, a headwind for gold.' };
+    const positive = direct ? beat : !beat;
+    return positive
+      ? { label:'Confirmed Positive for Gold', cls:'bullish', note: (beat?'Beat':'Missed') + ' forecast — historically a headwind for the currency, supportive for gold.' }
+      : { label:'Confirmed Negative for Gold', cls:'bearish', note: (beat?'Beat':'Missed') + ' forecast — historically strengthens the currency, a headwind for gold.' };
   }
 
   // Pre-release: no actual yet, so lean a direction from forecast vs. previous.
   if(forecast !== null && previous !== null){
     if(forecast === previous){
-      return { label:'Leaning Neutral for Gold', cls:'neutral', note:'Forecast is in line with the previous reading — pre-release read, limited surprise expected. Updates once the actual prints.' };
+      return { label:'Leaning Neutral for Gold', cls:'neutral', note:'Forecast is in line with the previous reading — pre-release read, limited surprise expected. Updates to a Confirmed tag once the actual prints.' };
     }
     const expectedBeat = forecast > previous;
-    const bullish = direct ? expectedBeat : !expectedBeat;
-    return bullish
-      ? { label:'Leaning Bullish for Gold', cls:'bullish', note: 'Forecast is ' + (expectedBeat?'above':'below') + ' the previous reading — pre-release read, historically a headwind for the currency if it holds. Updates once the actual prints.' }
-      : { label:'Leaning Bearish for Gold', cls:'bearish', note: 'Forecast is ' + (expectedBeat?'above':'below') + ' the previous reading — pre-release read, historically supportive for the currency if it holds. Updates once the actual prints.' };
+    const positive = direct ? expectedBeat : !expectedBeat;
+    return positive
+      ? { label:'Leaning Positive for Gold', cls:'bullish', note: 'Forecast is ' + (expectedBeat?'above':'below') + ' the previous reading — pre-release read, historically a headwind for the currency if it holds. Updates to a Confirmed tag once the actual prints.' }
+      : { label:'Leaning Negative for Gold', cls:'bearish', note: 'Forecast is ' + (expectedBeat?'above':'below') + ' the previous reading — pre-release read, historically supportive for the currency if it holds. Updates to a Confirmed tag once the actual prints.' };
   }
 
   return { label:'Pending', cls:'watch', note:'Not enough data yet (no forecast or previous reading) to read this one.' };
