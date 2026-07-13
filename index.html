@@ -91,6 +91,16 @@
   .pill.open{background:rgba(246,185,59,.15);color:var(--amber);}
   .r-pos{color:var(--green);font-weight:700;}
   .r-neg{color:var(--red);font-weight:700;}
+  .gold-outlook-row{display:flex;align-items:center;gap:20px;flex-wrap:wrap;}
+  .gold-outlook-badge{font-size:15px;font-weight:800;letter-spacing:.04em;padding:10px 18px;border-radius:6px;flex-shrink:0;}
+  .gold-outlook-badge.gold-outlook-bullish{background:rgba(52,211,153,.15);color:var(--green);}
+  .gold-outlook-badge.gold-outlook-bearish{background:rgba(251,90,117,.15);color:var(--red);}
+  .gold-outlook-badge.gold-outlook-neutral{background:rgba(246,185,59,.15);color:var(--amber);}
+  .gold-outlook-price{flex-shrink:0;}
+  .gold-outlook-price .v{font-size:20px;font-weight:800;}
+  .gold-outlook-price .l{font-size:11px;color:var(--muted);margin-top:2px;}
+  .gold-outlook-note{flex:1;min-width:220px;font-size:12.5px;color:var(--text2);line-height:1.5;}
+  @media (max-width:720px){ .gold-outlook-row{flex-direction:column;align-items:flex-start;} }
   .thumb{width:70px;height:44px;object-fit:cover;border-radius:3px;border:1px solid var(--border2);background:var(--panel2);display:block;}
   .thumb-fallback{width:70px;height:44px;border-radius:3px;border:1px solid var(--border2);background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:9.5px;color:var(--muted);}
   .empty{padding:44px;text-align:center;color:var(--muted);font-size:13px;}
@@ -387,6 +397,18 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
 </div>
 
 <main id="dashboardPage" class="page active" style="display:block;">
+  <div class="card" style="margin-bottom:22px;">
+    <div class="econ-header">
+      <h3 style="margin:0;">Gold (XAU/USD) Outlook — Today</h3>
+      <div class="econ-meta">
+        <span id="goldOutlookUpdated"></span>
+        <button class="ghost" onclick="loadGoldOutlook()">&#8635; Refresh</button>
+      </div>
+    </div>
+    <div id="goldOutlookBody"><div class="econ-empty">Loading&hellip;</div></div>
+    <div class="hint">Automated technical read on CME gold futures (GC=F, tracks XAU/USD closely) via free Yahoo Finance data — trend and momentum based, not financial advice. Refreshes automatically every 5 minutes.</div>
+  </div>
+
   <div class="stats" id="stats"></div>
 
   <div class="card" style="margin-bottom:22px;">
@@ -1068,6 +1090,7 @@ async function unlockDashboard(profile, email){
   renderDisplayControls();
   refreshAll();
   loadEconomicCalendar();
+  loadGoldOutlook();
 }
 
 function switchStrategy(profileKey){
@@ -1086,6 +1109,7 @@ function switchStrategy(profileKey){
     renderDisplayControls();
     refreshAll();
     loadEconomicCalendar();
+    loadGoldOutlook();
   });
 }
 
@@ -1349,6 +1373,118 @@ let econAutoRefreshTimer = null;
 function startEconAutoRefresh(){
   if(econAutoRefreshTimer) return;
   econAutoRefreshTimer = setInterval(loadEconomicCalendar, 5 * 60 * 1000);
+}
+
+/* ===================== Gold (XAU/USD) daily outlook (heuristic) =====================
+ * Free daily candles for CME gold futures (GC=F, tracks XAU/USD closely) from Yahoo
+ * Finance's public chart endpoint, routed through the same CORS relays used for the
+ * news calendar above. A simple moving-average + momentum + candle-structure heuristic
+ * turns that into a Bullish/Bearish/Neutral read for the day. This is an automated
+ * technical read, not certified financial advice. */
+async function fetchGoldDaily(){
+  const target = 'https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=3mo';
+  let lastErr;
+  for(const wrap of FF_PROXIES){
+    try{
+      const resp = await fetch(wrap(target), { cache:'no-store' });
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      let text = await resp.text();
+      const idx = text.indexOf('{');
+      if(idx > 0) text = text.slice(idx);
+      const j = JSON.parse(text);
+      const result = j.chart && j.chart.result && j.chart.result[0];
+      if(!result) throw new Error((j.chart && j.chart.error && j.chart.error.description) || 'No data');
+      const ts = result.timestamp, q = result.indicators.quote[0];
+      const out = [];
+      for(let i=0;i<ts.length;i++){
+        if(q.open[i]==null || q.high[i]==null || q.low[i]==null || q.close[i]==null) continue;
+        out.push({ time: ts[i], open:q.open[i], high:q.high[i], low:q.low[i], close:q.close[i] });
+      }
+      if(!out.length) throw new Error('No candle data');
+      return out;
+    }catch(e){ lastErr = e; }
+  }
+  throw lastErr || new Error('All gold data sources failed');
+}
+
+function sma(arr, period){
+  if(arr.length < period) return null;
+  const slice = arr.slice(-period);
+  return slice.reduce((a,b)=>a+b,0)/period;
+}
+
+function analyzeGoldOutlook(bars){
+  if(!bars || bars.length < 12) throw new Error('Not enough data');
+  const closes = bars.map(b=>b.close);
+  const last = bars[bars.length-1];
+  const prev = bars[bars.length-2];
+  const sma10 = sma(closes, 10);
+  const sma30 = sma(closes, Math.min(30, closes.length-1));
+
+  let score = 0;
+  const signals = [];
+  if(sma10 !== null && sma30 !== null){
+    if(sma10 > sma30){ score++; signals.push('short-term average above the medium-term average'); }
+    else if(sma10 < sma30){ score--; signals.push('short-term average below the medium-term average'); }
+  }
+  if(sma10 !== null){
+    if(last.close > sma10){ score++; signals.push('price trading above its 10-day average'); }
+    else { score--; signals.push('price trading below its 10-day average'); }
+  }
+  if(prev){
+    if(last.close > prev.close){ score++; signals.push('higher than the prior close'); }
+    else if(last.close < prev.close){ score--; signals.push('lower than the prior close'); }
+    if(last.high > prev.high && last.low > prev.low){ score++; signals.push('making a higher high and higher low vs. yesterday'); }
+    else if(last.high < prev.high && last.low < prev.low){ score--; signals.push('making a lower high and lower low vs. yesterday'); }
+  }
+
+  let view, cls;
+  if(score >= 2){ view='Bullish'; cls='bullish'; }
+  else if(score <= -2){ view='Bearish'; cls='bearish'; }
+  else { view='Neutral'; cls='neutral'; }
+
+  const changePct = prev ? ((last.close - prev.close)/prev.close*100) : 0;
+  return { view, cls, price:last.close, changePct, signals, score };
+}
+
+function buildGoldNote(a){
+  const lead = a.view==='Bullish' ? 'Short-term structure favors buyers today' : a.view==='Bearish' ? 'Short-term structure favors sellers today' : 'Signals are mixed today, no clear edge either way';
+  return lead + ' — ' + a.signals.join(', ') + '.';
+}
+
+function renderGoldOutlook(a){
+  const changeCls = a.changePct >= 0 ? 'r-pos' : 'r-neg';
+  const changeStr = (a.changePct>=0?'+':'') + a.changePct.toFixed(2) + '%';
+  document.getElementById('goldOutlookBody').innerHTML = `
+    <div class="gold-outlook-row">
+      <div class="gold-outlook-badge gold-outlook-${a.cls}">${a.view.toUpperCase()}</div>
+      <div class="gold-outlook-price">
+        <div class="v">${a.price.toFixed(2)}</div>
+        <div class="l ${changeCls}">${changeStr} vs. yesterday</div>
+      </div>
+      <div class="gold-outlook-note">${escapeHtml(buildGoldNote(a))}</div>
+    </div>
+  `;
+}
+
+async function loadGoldOutlook(){
+  const body = document.getElementById('goldOutlookBody');
+  if(!body) return;
+  body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+  try{
+    const bars = await fetchGoldDaily();
+    const a = analyzeGoldOutlook(bars);
+    renderGoldOutlook(a);
+    document.getElementById('goldOutlookUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }catch(err){
+    body.innerHTML = '<div class="econ-error">Could not load gold data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
+  }
+}
+
+let goldOutlookAutoRefreshTimer = null;
+function startGoldOutlookAutoRefresh(){
+  if(goldOutlookAutoRefreshTimer) return;
+  goldOutlookAutoRefreshTimer = setInterval(loadGoldOutlook, 5 * 60 * 1000);
 }
 
 /* ===================== Stats ===================== */
@@ -2054,6 +2190,7 @@ if(MAINTENANCE_MODE){
   initLockScreen();
 }
 startEconAutoRefresh();
+startGoldOutlookAutoRefresh();
 </script>
 </body>
 </html>
