@@ -625,6 +625,7 @@ const STRATEGY_PROFILES = {
     title: 'TRIGON TRIANGLE',
     subtitle: 'STRATEGY ACCURACY DASHBOARD',
     setupTypeLabel: 'Triangle Type',
+    setupTypeLabelPlural: 'Triangle Types',
     setupTypeOptions: ['Triangle 1','Triangle 2','Triangle 3','Triangle 4'],
     showCondition: true,
     conditionOptions: ['CONDITION 1','CONDITION 2','CONDITION 3'],
@@ -641,6 +642,7 @@ const STRATEGY_PROFILES = {
     title: 'FIBONACCI RETRACEMENT',
     subtitle: 'STRATEGY ACCURACY DASHBOARD',
     setupTypeLabel: 'Daily Bias',
+    setupTypeLabelPlural: 'Daily Bias',
     setupTypeOptions: ['Bullish','Bearish','Neutral'],
     showCondition: false,
     conditionOptions: [],
@@ -893,7 +895,7 @@ function applyStrategyProfileToDom(profile){
   const typeBtn = document.getElementById('breakdownTypeBtn');
   if(typeBtn) typeBtn.textContent = profile.setupTypeLabel.toUpperCase();
   const filterTypeSel = document.getElementById('filterType');
-  if(filterTypeSel && filterTypeSel.options[0]) filterTypeSel.options[0].textContent = `All ${profile.setupTypeLabel.toLowerCase()}s`;
+  if(filterTypeSel && filterTypeSel.options[0]) filterTypeSel.options[0].textContent = `All ${profile.setupTypeLabelPlural || profile.setupTypeLabel}`;
 
   const showCond = !!profile.showCondition;
   document.body.classList.toggle('hide-condition', !showCond);
