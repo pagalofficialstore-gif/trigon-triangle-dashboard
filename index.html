@@ -157,6 +157,7 @@
   .econ-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
   .econ-meta{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);}
   .econ-meta button{padding:6px 12px;}
+  .econ-ccy-filter{width:auto;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:6px 8px;border-radius:4px;font-size:11px;font-family:inherit;font-weight:700;cursor:pointer;}
   .econ-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
   .econ-daylabel{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;font-weight:700;}
   .econ-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1e212a;font-size:12.5px;}
@@ -390,8 +391,11 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
 
   <div class="card" style="margin-bottom:22px;">
     <div class="econ-header">
-      <h3 style="margin:0;">USD Red Folder News (High Impact)</h3>
+      <h3 style="margin:0;">Red Folder News (High Impact)</h3>
       <div class="econ-meta">
+        <select id="econCcyFilter" class="econ-ccy-filter" onchange="onEconCcyChange(this.value)">
+          <option value="USD">USD</option>
+        </select>
         <span id="econUpdated"></span>
         <button class="ghost" onclick="loadEconomicCalendar()">&#8635; Refresh</button>
       </div>
@@ -406,7 +410,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
         <div id="econTomorrow"><div class="econ-empty">Loading&hellip;</div></div>
       </div>
     </div>
-    <div class="hint">Source: Forex Factory's public calendar feed (unofficial, community-used). High-impact ("red folder") USD events only, shown in your local time. The Gold-impact tag is an automated read on actual-vs-forecast (not certified financial advice) — hover a tag for the reasoning. Refreshes automatically every 5 minutes.</div>
+    <div class="hint">Source: Forex Factory's public calendar feed (unofficial, community-used). High-impact ("red folder") events, shown in your local time — use the currency filter above to switch away from USD or see all currencies. The Gold-impact tag is an automated read (not certified financial advice): before an event prints it compares forecast vs. previous to lean a direction, then switches to actual-vs-forecast once the real number is out — hover a tag for the reasoning. Refreshes automatically every 5 minutes.</div>
   </div>
 
   <div class="card" style="margin-bottom:22px;">
@@ -1195,15 +1199,17 @@ function isSameLocalDay(d1, d2){
 
 /* ===================== Gold-impact analysis (heuristic) =====================
  * There's no bundled AI/LLM API key in this free client-side app, so this is a
- * transparent rule-based read on "does this USD data point typically push gold
- * up or down", based on whether the actual figure beat or missed forecast:
- *  - Growth/inflation-style data (NFP, CPI, GDP, retail sales, ISM, etc.) beating
- *    forecast = stronger dollar = usually bearish for gold, and vice versa.
- *  - Jobless-claims-style data is the inverse (more claims = weaker economy =
- *    usually bullish for gold).
- *  - Rate decisions/FOMC statements are flagged "Watch" since the market reacts
- *    to tone/guidance, not a single beat-or-miss number.
- *  - If there's no actual figure yet (event hasn't printed), it's "Pending". */
+ * transparent rule-based read on "does this data point typically push gold up
+ * or down for its currency", applied at two stages:
+ *  - BEFORE the event prints: compares forecast vs. previous to lean a
+ *    direction ahead of the release ("Leaning Bullish/Bearish for Gold").
+ *  - AFTER the actual figure is out: compares actual vs. forecast, which is
+ *    the number that actually moves markets ("Bullish/Bearish for Gold").
+ * Growth/inflation-style data (NFP, CPI, GDP, retail sales, ISM, etc.) coming
+ * in stronger = stronger currency = usually bearish for gold, and vice versa.
+ * Jobless-claims-style data is the inverse (more claims = weaker economy =
+ * usually bullish for gold). Rate decisions/FOMC statements are flagged
+ * "Watch" since the market reacts to tone/guidance, not one number. */
 const GOLD_INVERSE_KEYWORDS = ['non-farm','nonfarm','employment change','payroll','cpi','ppi','retail sales','gdp','ism manufacturing','ism services','ism non-manufacturing','consumer confidence','durable goods','housing starts','building permits','industrial production','pmi'];
 const GOLD_DIRECT_KEYWORDS = ['unemployment rate','jobless claims','unemployment claims','continuing claims'];
 const GOLD_WATCH_KEYWORDS = ['fed funds rate','interest rate decision','fomc','rate decision','monetary policy statement','press conference'];
@@ -1219,20 +1225,36 @@ function classifyGoldImpact(e){
   if(GOLD_WATCH_KEYWORDS.some(k=>title.includes(k))){
     return { label:'Watch for Gold', cls:'watch', note:'Rate/policy event — gold reacts to tone and guidance, not just one number.' };
   }
+  const direct = GOLD_DIRECT_KEYWORDS.some(k=>title.includes(k));
   const actual = parseEconNum(e.actual);
   const forecast = parseEconNum(e.forecast);
-  if(actual===null || forecast===null){
-    return { label:'Pending', cls:'watch', note:'Waiting for the actual figure to print before this can be read.' };
+  const previous = parseEconNum(e.previous);
+
+  // Post-release: the actual figure is out, so read it against forecast.
+  if(actual !== null && forecast !== null){
+    if(actual === forecast){
+      return { label:'Neutral for Gold', cls:'neutral', note:'Came in line with forecast — limited surprise, so limited market reaction expected.' };
+    }
+    const beat = actual > forecast;
+    const bullish = direct ? beat : !beat;
+    return bullish
+      ? { label:'Bullish for Gold', cls:'bullish', note: (beat?'Beat':'Missed') + ' forecast — historically a headwind for the currency, supportive for gold.' }
+      : { label:'Bearish for Gold', cls:'bearish', note: (beat?'Beat':'Missed') + ' forecast — historically strengthens the currency, a headwind for gold.' };
   }
-  if(actual===forecast){
-    return { label:'Neutral for Gold', cls:'neutral', note:'In line with forecast — limited surprise, so limited market reaction expected.' };
+
+  // Pre-release: no actual yet, so lean a direction from forecast vs. previous.
+  if(forecast !== null && previous !== null){
+    if(forecast === previous){
+      return { label:'Leaning Neutral for Gold', cls:'neutral', note:'Forecast is in line with the previous reading — pre-release read, limited surprise expected. Updates once the actual prints.' };
+    }
+    const expectedBeat = forecast > previous;
+    const bullish = direct ? expectedBeat : !expectedBeat;
+    return bullish
+      ? { label:'Leaning Bullish for Gold', cls:'bullish', note: 'Forecast is ' + (expectedBeat?'above':'below') + ' the previous reading — pre-release read, historically a headwind for the currency if it holds. Updates once the actual prints.' }
+      : { label:'Leaning Bearish for Gold', cls:'bearish', note: 'Forecast is ' + (expectedBeat?'above':'below') + ' the previous reading — pre-release read, historically supportive for the currency if it holds. Updates once the actual prints.' };
   }
-  const beat = actual > forecast;
-  const direct = GOLD_DIRECT_KEYWORDS.some(k=>title.includes(k));
-  const bullish = direct ? beat : !beat;
-  return bullish
-    ? { label:'Bullish for Gold', cls:'bullish', note: (beat?'Beat':'Missed') + ' forecast — historically a headwind for the dollar, supportive for gold.' }
-    : { label:'Bearish for Gold', cls:'bearish', note: (beat?'Beat':'Missed') + ' forecast — historically strengthens the dollar, a headwind for gold.' };
+
+  return { label:'Pending', cls:'watch', note:'Not enough data yet (no forecast or previous reading) to read this one.' };
 }
 
 function econRowHtml(e){
@@ -1255,15 +1277,51 @@ function econRowHtml(e){
   </div>`;
 }
 
-async function loadEconomicCalendar(){
-  document.getElementById('econToday').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
-  document.getElementById('econTomorrow').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
-  document.getElementById('econUpdated').textContent = '';
+let econAllEvents = [];
+let econCurrency = 'USD';
 
+function populateEconCcyFilter(){
+  const sel = document.getElementById('econCcyFilter');
+  if(!sel) return;
+  const cur = sel.value || econCurrency;
+  const currencies = [...new Set(
+    econAllEvents.filter(e=>e.impact==='High').map(e=>(e.country||'').toUpperCase()).filter(Boolean)
+  )].sort();
+  const opts = ['USD', ...currencies.filter(c=>c!=='USD')];
+  sel.innerHTML = '<option value="ALL">All Currencies</option>' + opts.map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.value = [...sel.options].some(o=>o.value===cur) ? cur : 'USD';
+  econCurrency = sel.value;
+}
+
+function onEconCcyChange(v){
+  econCurrency = v;
+  renderEconEvents();
+}
+
+function renderEconEvents(){
   const now = new Date();
   const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
   document.getElementById('econTodayDate').textContent = now.toLocaleDateString([], { month:'short', day:'numeric' });
   document.getElementById('econTomorrowDate').textContent = tomorrow.toLocaleDateString([], { month:'short', day:'numeric' });
+
+  const highImpact = econAllEvents.filter(e => e.impact === 'High' && (econCurrency==='ALL' || (e.country||'').toUpperCase()===econCurrency));
+  const byTime = (a,b)=> new Date(a.date) - new Date(b.date);
+  const todayEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), now)).sort(byTime);
+  const tomorrowEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), tomorrow)).sort(byTime);
+
+  const ccyLabel = econCurrency==='ALL' ? '' : econCurrency + ' ';
+  document.getElementById('econToday').innerHTML = todayEvents.length
+    ? todayEvents.map(econRowHtml).join('')
+    : `<div class="econ-empty">No high-impact ${ccyLabel}events today.</div>`;
+  document.getElementById('econTomorrow').innerHTML = tomorrowEvents.length
+    ? tomorrowEvents.map(econRowHtml).join('')
+    : `<div class="econ-empty">No high-impact ${ccyLabel}events tomorrow.</div>`;
+}
+
+async function loadEconomicCalendar(){
+  document.getElementById('econToday').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+  document.getElementById('econTomorrow').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+  document.getElementById('econUpdated').textContent = '';
 
   try{
     const [thisWeek, nextWeek] = await Promise.allSettled([
@@ -1275,18 +1333,10 @@ async function loadEconomicCalendar(){
     if(nextWeek.status==='fulfilled') all = all.concat(nextWeek.value);
     if(!all.length) throw (thisWeek.reason || nextWeek.reason || new Error('No calendar data available'));
 
-    const highImpact = all.filter(e => e.impact === 'High' && (e.country||'').toUpperCase() === 'USD');
-    const byTime = (a,b)=> new Date(a.date) - new Date(b.date);
-    const todayEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), now)).sort(byTime);
-    const tomorrowEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), tomorrow)).sort(byTime);
-
-    document.getElementById('econToday').innerHTML = todayEvents.length
-      ? todayEvents.map(econRowHtml).join('')
-      : '<div class="econ-empty">No high-impact USD events today.</div>';
-    document.getElementById('econTomorrow').innerHTML = tomorrowEvents.length
-      ? tomorrowEvents.map(econRowHtml).join('')
-      : '<div class="econ-empty">No high-impact USD events tomorrow.</div>';
-    document.getElementById('econUpdated').textContent = 'Updated ' + now.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    econAllEvents = all;
+    populateEconCcyFilter();
+    renderEconEvents();
+    document.getElementById('econUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   }catch(err){
     const msg = '<div class="econ-error">Could not load the calendar (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
     document.getElementById('econToday').innerHTML = msg;
