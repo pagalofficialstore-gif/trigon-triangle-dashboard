@@ -406,7 +406,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       </div>
     </div>
     <div id="goldOutlookBody"><div class="econ-empty">Loading&hellip;</div></div>
-    <div class="hint">One combined, automated verdict — moving averages, momentum, RSI and range position on CME gold futures (GC=F), cross-checked against a second independent XAU/USD feed, plus today's high-impact USD news reads folded in. Not certified financial advice. Refreshes automatically every 5 minutes.</div>
+    <div class="hint">One combined, automated verdict — moving averages, momentum, RSI, range position and volume (the closest free proxy to order flow; no free source publishes real bid/ask depth) on CME gold futures (GC=F), cross-checked against a second independent XAU/USD feed, plus today's high-impact USD news reads folded in. Not certified financial advice. Refreshes automatically every 5 minutes.</div>
   </div>
 
   <div class="stats" id="stats"></div>
@@ -1394,8 +1394,10 @@ async function fetchGoldDaily(){
   const target = 'https://query1.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=3mo';
   let lastErr;
   for(const wrap of FF_PROXIES){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 8000);
     try{
-      const resp = await fetch(wrap(target), { cache:'no-store' });
+      const resp = await fetch(wrap(target), { cache:'no-store', signal: controller.signal });
       if(!resp.ok) throw new Error('HTTP ' + resp.status);
       let text = await resp.text();
       const idx = text.indexOf('{');
@@ -1407,11 +1409,12 @@ async function fetchGoldDaily(){
       const out = [];
       for(let i=0;i<ts.length;i++){
         if(q.open[i]==null || q.high[i]==null || q.low[i]==null || q.close[i]==null) continue;
-        out.push({ time: ts[i], open:q.open[i], high:q.high[i], low:q.low[i], close:q.close[i] });
+        out.push({ time: ts[i], open:q.open[i], high:q.high[i], low:q.low[i], close:q.close[i], volume:(q.volume?q.volume[i]:null) });
       }
       if(!out.length) throw new Error('No candle data');
       return out;
     }catch(e){ lastErr = e; }
+    finally{ clearTimeout(timer); }
   }
   throw lastErr || new Error('All gold data sources failed');
 }
@@ -1423,8 +1426,10 @@ async function fetchGoldSecondary(){
   const target = 'https://stooq.com/q/d/l/?s=xauusd&i=d';
   let lastErr;
   for(const wrap of FF_PROXIES){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), 8000);
     try{
-      const resp = await fetch(wrap(target), { cache:'no-store' });
+      const resp = await fetch(wrap(target), { cache:'no-store', signal: controller.signal });
       if(!resp.ok) throw new Error('HTTP ' + resp.status);
       const text = await resp.text();
       const lines = text.trim().split('\n').filter(Boolean);
@@ -1436,6 +1441,7 @@ async function fetchGoldSecondary(){
       if(rows.length < 6) throw new Error('Not enough secondary data');
       return rows;
     }catch(e){ lastErr = e; }
+    finally{ clearTimeout(timer); }
   }
   return null;
 }
@@ -1504,6 +1510,16 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
   vote(mom3!==null && Math.abs(mom3)>0.1 ? Math.sign(mom3) : null, 1, 'positive 3-day momentum', 'negative 3-day momentum');
   vote(mom5!==null && Math.abs(mom5)>0.1 ? Math.sign(mom5) : null, 1, 'positive 5-day momentum', 'negative 5-day momentum');
   vote(rsi14!==null && Math.abs(rsi14-50)>5 ? Math.sign(rsi14-50) : null, 1, 'RSI(14) favoring buyers', 'RSI(14) favoring sellers');
+  // Volume is the closest free proxy to real order flow (no free source publishes
+  // CME bid/ask depth or footprint data) — a move backed by above-average volume
+  // carries more weight than the same move on thin volume.
+  const volumes = bars.map(b=>b.volume).filter(v=>v!=null && v>0);
+  if(prev && volumes.length >= 10 && last.volume!=null && last.volume>0){
+    const volAvg10 = sma(volumes, 10);
+    if(volAvg10!==null && last.volume > volAvg10*1.15){
+      vote(Math.sign(last.close-prev.close), 1, 'up-move backed by above-average volume (order-flow proxy)', 'down-move backed by above-average volume (order-flow proxy)');
+    }
+  }
   vote(rangePos!==null && Math.abs(rangePos-0.5)>0.1 ? Math.sign(rangePos-0.5) : null, 1, 'trading in the upper part of its 20-day range', 'trading in the lower part of its 20-day range');
   if(prev){
     vote(Math.sign(last.close-prev.close), 1, 'higher than the prior close', 'lower than the prior close');
@@ -1579,20 +1595,26 @@ function renderGoldOutlook(a){
   `;
 }
 
+function withTimeout(promise, ms){
+  return Promise.race([
+    promise,
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error('timed out')), ms))
+  ]);
+}
+
 async function loadGoldOutlook(){
   const body = document.getElementById('goldOutlookBody');
   if(!body) return;
   body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
   try{
-    if(!econAllEvents.length){
-      try{ await loadEconomicCalendar(); }catch(e){}
-    }
+    // Reuse whatever the news card has already cached — don't re-fetch the calendar
+    // here, that would double up on the same CORS proxies and slow both cards down.
     const now = new Date();
     const todayUsdHigh = econAllEvents.filter(e => e.impact==='High' && (e.country||'').toUpperCase()==='USD' && isSameLocalDay(new Date(e.date), now));
 
     const [bars, secondaryRows] = await Promise.all([
-      fetchGoldDaily(),
-      fetchGoldSecondary().catch(()=>null)
+      withTimeout(fetchGoldDaily(), 20000),
+      withTimeout(fetchGoldSecondary(), 15000).catch(()=>null)
     ]);
     const a = analyzeGoldOutlook(bars, secondaryRows, todayUsdHigh);
     renderGoldOutlook(a);
