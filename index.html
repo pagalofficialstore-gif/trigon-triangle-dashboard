@@ -1206,22 +1206,44 @@ const FF_PROXIES = [
   (url)=> 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url)
 ];
 
+/* Shared fetch helper used by every free data source on this dashboard (news
+ * calendar, gold/forex/crypto price data). Earlier this tried each proxy one at
+ * a time, so a single slow or rate-limited free proxy could block the whole
+ * chain for 20-30+ seconds (or hang indefinitely if it never errored) before
+ * the next one was even attempted — that's what made the site feel like "no
+ * internet" sometimes. Now all proxies are raced in parallel with their own
+ * timeout each, so whichever responds first (with valid data) wins, and a dead
+ * proxy just gets ignored instead of blocking anything. */
+async function fetchViaProxies(target, opts){
+  opts = opts || {};
+  const timeoutMs = opts.timeoutMs || 8000;
+  const parse = opts.parse || (t=>t);
+  const attempts = FF_PROXIES.map(wrap => (async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), timeoutMs);
+    try{
+      const resp = await fetch(wrap(target), { cache:'no-store', signal: controller.signal });
+      if(!resp.ok) throw new Error('HTTP ' + resp.status);
+      const text = await resp.text();
+      return parse(text);
+    } finally { clearTimeout(timer); }
+  })());
+  try{
+    return await Promise.any(attempts);
+  }catch(e){
+    throw new Error('All sources failed or timed out');
+  }
+}
+
 async function fetchFFJson(path){
   const target = FF_CALENDAR_BASE + path;
-  let lastErr;
-  for(const wrap of FF_PROXIES){
-    try{
-      const resp = await fetch(wrap(target), { cache:'no-store' });
-      if(!resp.ok) throw new Error('HTTP ' + resp.status);
-      let text = await resp.text();
-      const idx = text.indexOf('[');
-      if(idx > 0) text = text.slice(idx);
-      const data = JSON.parse(text);
-      if(Array.isArray(data)) return data;
-      throw new Error('Unexpected response shape');
-    }catch(e){ lastErr = e; }
-  }
-  throw lastErr || new Error('All calendar sources failed');
+  return fetchViaProxies(target, { timeoutMs: 8000, parse: (text)=>{
+    const idx = text.indexOf('[');
+    if(idx > 0) text = text.slice(idx);
+    const data = JSON.parse(text);
+    if(!Array.isArray(data)) throw new Error('Unexpected response shape');
+    return data;
+  }});
 }
 
 function isSameLocalDay(d1, d2){
@@ -1350,10 +1372,33 @@ function renderEconEvents(){
     : `<div class="econ-empty">No high-impact ${ccyLabel}events tomorrow.</div>`;
 }
 
+/* Stale-while-revalidate cache: saves the last successful load to localStorage so a
+ * page reload shows real data immediately (not a bare spinner) even if the free
+ * proxies are slow or briefly unreachable, then quietly refreshes in the background. */
+function loadCachedJson(key){
+  try{
+    const raw = localStorage.getItem(key);
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    return (parsed && parsed.data !== undefined) ? parsed : null;
+  }catch(e){ return null; }
+}
+function saveCachedJson(key, data){
+  try{ localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data })); }catch(e){}
+}
+
 async function loadEconomicCalendar(){
-  document.getElementById('econToday').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
-  document.getElementById('econTomorrow').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
-  document.getElementById('econUpdated').textContent = '';
+  const cached = loadCachedJson('econCache_v1');
+  if(cached && Array.isArray(cached.data) && cached.data.length && !econAllEvents.length){
+    econAllEvents = cached.data;
+    populateEconCcyFilter();
+    renderEconEvents();
+    document.getElementById('econUpdated').textContent = 'Showing saved data — refreshing…';
+  } else {
+    document.getElementById('econToday').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+    document.getElementById('econTomorrow').innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+    document.getElementById('econUpdated').textContent = '';
+  }
 
   try{
     const [thisWeek, nextWeek] = await Promise.allSettled([
@@ -1366,13 +1411,18 @@ async function loadEconomicCalendar(){
     if(!all.length) throw (thisWeek.reason || nextWeek.reason || new Error('No calendar data available'));
 
     econAllEvents = all;
+    saveCachedJson('econCache_v1', all);
     populateEconCcyFilter();
     renderEconEvents();
     document.getElementById('econUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   }catch(err){
-    const msg = '<div class="econ-error">Could not load the calendar (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
-    document.getElementById('econToday').innerHTML = msg;
-    document.getElementById('econTomorrow').innerHTML = msg;
+    if(cached && cached.data && cached.data.length){
+      document.getElementById('econUpdated').textContent = 'Could not refresh — showing saved data from earlier.';
+    } else {
+      const msg = '<div class="econ-error">Could not load the calendar (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
+      document.getElementById('econToday').innerHTML = msg;
+      document.getElementById('econTomorrow').innerHTML = msg;
+    }
   }
 }
 
@@ -1419,31 +1469,21 @@ function onOutlookInstrumentChange(v){
 
 async function fetchGoldDaily(yahooSymbol){
   const target = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yahooSymbol||'GC=F') + '?interval=1d&range=3mo';
-  let lastErr;
-  for(const wrap of FF_PROXIES){
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), 8000);
-    try{
-      const resp = await fetch(wrap(target), { cache:'no-store', signal: controller.signal });
-      if(!resp.ok) throw new Error('HTTP ' + resp.status);
-      let text = await resp.text();
-      const idx = text.indexOf('{');
-      if(idx > 0) text = text.slice(idx);
-      const j = JSON.parse(text);
-      const result = j.chart && j.chart.result && j.chart.result[0];
-      if(!result) throw new Error((j.chart && j.chart.error && j.chart.error.description) || 'No data');
-      const ts = result.timestamp, q = result.indicators.quote[0];
-      const out = [];
-      for(let i=0;i<ts.length;i++){
-        if(q.open[i]==null || q.high[i]==null || q.low[i]==null || q.close[i]==null) continue;
-        out.push({ time: ts[i], open:q.open[i], high:q.high[i], low:q.low[i], close:q.close[i], volume:(q.volume?q.volume[i]:null) });
-      }
-      if(!out.length) throw new Error('No candle data');
-      return out;
-    }catch(e){ lastErr = e; }
-    finally{ clearTimeout(timer); }
-  }
-  throw lastErr || new Error('All gold data sources failed');
+  return fetchViaProxies(target, { timeoutMs: 8000, parse: (text)=>{
+    const idx = text.indexOf('{');
+    if(idx > 0) text = text.slice(idx);
+    const j = JSON.parse(text);
+    const result = j.chart && j.chart.result && j.chart.result[0];
+    if(!result) throw new Error((j.chart && j.chart.error && j.chart.error.description) || 'No data');
+    const ts = result.timestamp, q = result.indicators.quote[0];
+    const out = [];
+    for(let i=0;i<ts.length;i++){
+      if(q.open[i]==null || q.high[i]==null || q.low[i]==null || q.close[i]==null) continue;
+      out.push({ time: ts[i], open:q.open[i], high:q.high[i], low:q.low[i], close:q.close[i], volume:(q.volume?q.volume[i]:null) });
+    }
+    if(!out.length) throw new Error('No candle data');
+    return out;
+  }});
 }
 
 /* Secondary, independent cross-check feed: free daily candles from Stooq for whichever
@@ -1451,14 +1491,8 @@ async function fetchGoldDaily(yahooSymbol){
  * read still proceeds on the primary Yahoo technical picture and the news overlay. */
 async function fetchGoldSecondary(stooqSymbol){
   const target = 'https://stooq.com/q/d/l/?s=' + encodeURIComponent(stooqSymbol||'xauusd') + '&i=d';
-  let lastErr;
-  for(const wrap of FF_PROXIES){
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), 8000);
-    try{
-      const resp = await fetch(wrap(target), { cache:'no-store', signal: controller.signal });
-      if(!resp.ok) throw new Error('HTTP ' + resp.status);
-      const text = await resp.text();
+  try{
+    return await fetchViaProxies(target, { timeoutMs: 8000, parse: (text)=>{
       const lines = text.trim().split('\n').filter(Boolean);
       if(lines.length < 3) throw new Error('No secondary data');
       const rows = lines.slice(1).map(l=>{
@@ -1467,10 +1501,8 @@ async function fetchGoldSecondary(stooqSymbol){
       }).filter(r=>!isNaN(r.close));
       if(rows.length < 6) throw new Error('Not enough secondary data');
       return rows;
-    }catch(e){ lastErr = e; }
-    finally{ clearTimeout(timer); }
-  }
-  return null;
+    }});
+  }catch(e){ return null; }
 }
 
 function sma(arr, period){
@@ -1657,22 +1689,37 @@ async function loadGoldOutlook(){
   if(titleEl) titleEl.textContent = instrumentCfg.icon + ' ' + instrumentCfg.label + ' Outlook — Today';
   const filterEl = document.getElementById('outlookInstrumentFilter');
   if(filterEl && filterEl.value !== instrumentCfg.key) filterEl.value = instrumentCfg.key;
-  body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
-  try{
-    // Reuse whatever the news card has already cached — don't re-fetch the calendar
-    // here, that would double up on the same CORS proxies and slow both cards down.
-    const now = new Date();
-    const todayUsdHigh = econAllEvents.filter(e => e.impact==='High' && (e.country||'').toUpperCase()==='USD' && isSameLocalDay(new Date(e.date), now));
 
+  const now = new Date();
+  const todayUsdHigh = econAllEvents.filter(e => e.impact==='High' && (e.country||'').toUpperCase()==='USD' && isSameLocalDay(new Date(e.date), now));
+
+  const cacheKey = 'outlookCache_' + instrumentCfg.key;
+  const cached = loadCachedJson(cacheKey);
+  if(cached && cached.data && cached.data.bars && cached.data.bars.length){
+    try{
+      const a = analyzeGoldOutlook(cached.data.bars, cached.data.secondaryRows, todayUsdHigh, instrumentCfg);
+      renderGoldOutlook(a);
+      document.getElementById('goldOutlookUpdated').textContent = 'Showing saved data — refreshing…';
+    }catch(e){ body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>'; }
+  } else {
+    body.innerHTML = '<div class="econ-empty">Loading&hellip;</div>';
+  }
+
+  try{
     const [bars, secondaryRows] = await Promise.all([
       withTimeout(fetchGoldDaily(instrumentCfg.yahoo), 20000),
       withTimeout(fetchGoldSecondary(instrumentCfg.stooq), 15000).catch(()=>null)
     ]);
+    saveCachedJson(cacheKey, { bars, secondaryRows });
     const a = analyzeGoldOutlook(bars, secondaryRows, todayUsdHigh, instrumentCfg);
     renderGoldOutlook(a);
     document.getElementById('goldOutlookUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   }catch(err){
-    body.innerHTML = '<div class="econ-error">Could not load ' + escapeHtml(instrumentCfg.label) + ' data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
+    if(cached && cached.data && cached.data.bars && cached.data.bars.length){
+      document.getElementById('goldOutlookUpdated').textContent = 'Could not refresh — showing saved data from earlier.';
+    } else {
+      body.innerHTML = '<div class="econ-error">Could not load ' + escapeHtml(instrumentCfg.label) + ' data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
+    }
   }
 }
 
