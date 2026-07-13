@@ -873,6 +873,16 @@ function showUnlockLoadingScreen(profile, callback){
   }, 5000);
 }
 
+function showStrategySwitchLoadingScreen(profile, callback){
+  document.getElementById('unlockGreeting').textContent = 'SWITCHING TO ' + profile.title;
+  document.getElementById('unlockQuote').textContent = nextMotivationQuote();
+  document.getElementById('unlockLoadingScreen').style.display = 'flex';
+  setTimeout(()=>{
+    document.getElementById('unlockLoadingScreen').style.display = 'none';
+    callback();
+  }, 1800);
+}
+
 function populateEmailDropdowns(){
   const opts = Object.values(STRATEGY_PROFILES).map(p=>`<option value="${p.email}">${p.email}</option>`).join('');
   document.getElementById('setup_email').innerHTML = opts;
@@ -1048,17 +1058,23 @@ async function unlockDashboard(profile, email){
   loadEconomicCalendar();
 }
 
-async function switchStrategy(profileKey){
+function switchStrategy(profileKey){
   const profile = STRATEGY_PROFILES[profileKey];
-  if(!profile || profile === activeProfile) return;
-  activeProfile = profile;
-  applyStrategyProfileToDom(profile);
-  document.getElementById('loggedInEmail').textContent = profile.email;
-  try{ localStorage.setItem(SESSION_KEY, JSON.stringify({ email: profile.email })); }catch(e){}
-  await loadState();
-  renderDisplayControls();
-  refreshAll();
-  loadEconomicCalendar();
+  if(!profile || profile === activeProfile){
+    const switcher = document.getElementById('strategySwitcher');
+    if(switcher) switcher.value = activeProfile.key;
+    return;
+  }
+  showStrategySwitchLoadingScreen(profile, async ()=>{
+    activeProfile = profile;
+    applyStrategyProfileToDom(profile);
+    document.getElementById('loggedInEmail').textContent = profile.email;
+    try{ localStorage.setItem(SESSION_KEY, JSON.stringify({ email: profile.email })); }catch(e){}
+    await loadState();
+    renderDisplayControls();
+    refreshAll();
+    loadEconomicCalendar();
+  });
 }
 
 function lockDashboard(){
