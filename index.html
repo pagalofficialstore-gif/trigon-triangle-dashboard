@@ -1529,7 +1529,7 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
   }
 
   // Cross-check against a second, independent XAU/USD feed.
-  let secondaryNote = null;
+  let secondaryNote = null, secondaryAgreed = false;
   if(secondaryRows && secondaryRows.length >= 6){
     const sCloses = secondaryRows.map(r=>r.close);
     const sShort = sma(sCloses, 5), sLong = sma(sCloses, Math.min(15, sCloses.length-1));
@@ -1539,6 +1539,7 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
       if(secDir === priorDir){
         score += secDir; if(secDir>0) bullishCount++; else bearishCount++;
         secondaryNote = 'a second independent XAU/USD feed confirms the same direction';
+        secondaryAgreed = true;
       } else {
         secondaryNote = 'a second independent XAU/USD feed leans the other way, tempering confidence';
       }
@@ -1568,12 +1569,25 @@ function analyzeGoldOutlook(bars, secondaryRows, todayNewsEvents){
   else if(score <= -3){ view='Bearish'; cls='bearish'; }
   else { view='Neutral'; cls='neutral'; }
 
+  // Only call it "Confirmed" when it's actually been cross-checked and agrees:
+  // either the independent second feed lined up with the primary read, or the
+  // signals are lopsided enough (3-in-4 or better, with a decent sample) that
+  // there's no real ambiguity. Anything short of that is a plain Bullish/Bearish
+  // read, not a confirmed one — Neutral is never "confirmed" since by definition
+  // there's no clear edge either way.
+  const totalDirectional = bullishCount + bearishCount;
+  const dominant = Math.max(bullishCount, bearishCount);
+  const strongMajority = totalDirectional >= 4 && (dominant/totalDirectional) >= 0.75;
+  const confirmed = view !== 'Neutral' && (secondaryAgreed || strongMajority);
+
   const changePct = prev ? ((last.close - prev.close)/prev.close*100) : 0;
-  return { view, cls, price:last.close, changePct, signals, score, bullishCount, bearishCount, secondaryNote, newsNote };
+  return { view, cls, price:last.close, changePct, signals, score, bullishCount, bearishCount, secondaryNote, newsNote, confirmed };
 }
 
 function buildGoldNote(a){
-  const lead = a.view==='Bullish' ? 'Confirmed bullish read' : a.view==='Bearish' ? 'Confirmed bearish read' : 'Confirmed neutral read — no clear edge';
+  const lead = a.confirmed
+    ? (a.view==='Bullish' ? 'Confirmed bullish read' : 'Confirmed bearish read')
+    : (a.view==='Bullish' ? 'Bullish read (not independently confirmed)' : a.view==='Bearish' ? 'Bearish read (not independently confirmed)' : 'Neutral read — no clear edge');
   const tally = `${a.bullishCount} bullish vs. ${a.bearishCount} bearish signals`;
   const detail = a.signals.length ? a.signals.slice(0,4).join(', ') : 'limited data available';
   const extras = [a.secondaryNote, a.newsNote].filter(Boolean);
@@ -1583,9 +1597,10 @@ function buildGoldNote(a){
 function renderGoldOutlook(a){
   const changeCls = a.changePct >= 0 ? 'r-pos' : 'r-neg';
   const changeStr = (a.changePct>=0?'+':'') + a.changePct.toFixed(2) + '%';
+  const badgeLabel = a.confirmed ? ('CONFIRMED ' + a.view.toUpperCase()) : a.view.toUpperCase();
   document.getElementById('goldOutlookBody').innerHTML = `
     <div class="gold-outlook-row">
-      <div class="gold-outlook-badge gold-outlook-${a.cls}">CONFIRMED ${a.view.toUpperCase()}</div>
+      <div class="gold-outlook-badge gold-outlook-${a.cls}">${badgeLabel}</div>
       <div class="gold-outlook-price">
         <div class="v">${a.price.toFixed(2)}</div>
         <div class="l ${changeCls}">${changeStr} vs. yesterday</div>
@@ -1618,7 +1633,7 @@ async function loadGoldOutlook(){
     ]);
     const a = analyzeGoldOutlook(bars, secondaryRows, todayUsdHigh);
     renderGoldOutlook(a);
-    document.getElementById('goldOutlookUpdated').textContent = 'Confirmed ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    document.getElementById('goldOutlookUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
   }catch(err){
     body.innerHTML = '<div class="econ-error">Could not load gold data (' + escapeHtml(err.message||String(err)) + '). Try Refresh.</div>';
   }
