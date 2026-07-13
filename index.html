@@ -297,7 +297,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
   <div class="maint-card">
     <div class="logo-tri maint-logo"></div>
     <div class="maint-label">TRIGON TRIANGLE</div>
-    <h2 class="unlock-greeting">HELLO MELSTON</h2>
+    <h2 class="unlock-greeting" id="unlockGreeting">HELLO MELSTON</h2>
     <div class="unlock-quote" id="unlockQuote"></div>
     <div class="maint-progress"><div class="maint-progress-bar"></div></div>
     <div class="maint-dots"><span></span><span></span><span></span></div>
@@ -621,6 +621,7 @@ const STRATEGY_PROFILES = {
   trigon: {
     key: 'trigon',
     email: 'melstonianlobo02@gmail.com',
+    greetingName: 'MELSTON',
     title: 'TRIGON TRIANGLE',
     subtitle: 'STRATEGY ACCURACY DASHBOARD',
     setupTypeLabel: 'Triangle Type',
@@ -636,6 +637,7 @@ const STRATEGY_PROFILES = {
   fibo: {
     key: 'fibo',
     email: 'deonmonteiro@gmail.com',
+    greetingName: 'DEON',
     title: 'FIBONACCI RETRACEMENT',
     subtitle: 'STRATEGY ACCURACY DASHBOARD',
     setupTypeLabel: 'Daily Bias',
@@ -856,7 +858,8 @@ function nextMotivationQuote(){
   return MOTIVATION_QUOTES[idx];
 }
 
-function showUnlockLoadingScreen(callback){
+function showUnlockLoadingScreen(profile, callback){
+  document.getElementById('unlockGreeting').textContent = 'HELLO ' + (profile && profile.greetingName ? profile.greetingName : 'THERE');
   document.getElementById('unlockQuote').textContent = nextMotivationQuote();
   document.getElementById('unlockLoadingScreen').style.display = 'flex';
   setTimeout(()=>{
@@ -909,6 +912,10 @@ function applyStrategyProfileToDom(profile){
   ['a_link2Field','e_link2Field'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.display = showChart2 ? '' : 'none';
+  });
+  ['a_imgGrid','e_imgGrid','replayImgGrid'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.classList.toggle('two-col', showChart2);
   });
 }
 
@@ -978,7 +985,7 @@ async function setupAccess(){
   const passHash = await sha256(pass);
   try{
     await authDocFor(profile).set({ email, passHash });
-    showUnlockLoadingScreen(()=> unlockDashboard(profile, email));
+    showUnlockLoadingScreen(profile, ()=> unlockDashboard(profile, email));
   }catch(e){
     err.textContent = 'Could not save — check your connection and try again.';
   }
@@ -995,7 +1002,7 @@ async function unlockAccess(){
   if(!auth){ refreshLockFormForEmail(email); return; }
   const passHash = await sha256(pass);
   if(email === auth.email && passHash === auth.passHash){
-    showUnlockLoadingScreen(()=> unlockDashboard(profile, email));
+    showUnlockLoadingScreen(profile, ()=> unlockDashboard(profile, email));
   } else {
     err.textContent = 'Wrong email or password.';
   }
