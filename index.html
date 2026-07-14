@@ -134,6 +134,7 @@
   .modal-overlay.open{display:flex;}
   .modal{background:var(--panel);border:1px solid var(--border2);border-radius:6px;width:100%;max-width:720px;padding:26px;animation:tg-rise .18s ease;}
   .modal.modal-wide{max-width:1280px;}
+  .modal.modal-wide3{max-width:1560px;}
   .modal .top-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;}
   .modal h2{margin:0;font-size:16px;color:var(--text2);}
   .modal .close{background:transparent;color:var(--muted);border:none;font-size:20px;cursor:pointer;padding:0;line-height:1;font-weight:400;}
@@ -144,6 +145,8 @@
   }
   select{background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:8px 10px;border-radius:3px;font-size:13px;font-family:inherit;width:100%;}
   .field{margin-bottom:12px;}
+  .checkbox-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;}
+  .checkbox-label input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
   .form-grid .full{grid-column:1/-1;font-size:12px;color:var(--muted);}
   .modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
@@ -156,9 +159,24 @@
   .replay-img-wrap{border-radius:6px;overflow:hidden;border:1px solid var(--border2);background:var(--panel2);text-align:center;margin-bottom:8px;}
   .img-grid{display:grid;grid-template-columns:1fr;gap:10px;}
   .img-grid.two-col{grid-template-columns:1fr 1fr;}
-  @media (max-width:720px){ .img-grid.two-col{grid-template-columns:1fr;} }
+  .img-grid.three-col{grid-template-columns:1fr 1fr 1fr;}
+  @media (max-width:1000px){ .img-grid.three-col{grid-template-columns:1fr 1fr;} }
+  @media (max-width:720px){ .img-grid.two-col,.img-grid.three-col{grid-template-columns:1fr;} }
   body.hide-condition .col-cond{display:none !important;}
   .replay-img-wrap img{width:100%;display:block;}
+  .zoomable-preview{cursor:zoom-in;}
+  .thumb.zoomable-preview{cursor:zoom-in;}
+  .lightbox-overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:200;}
+  .lightbox-overlay.open{display:flex;}
+  .lightbox-toolbar{position:absolute;top:16px;right:16px;display:flex;align-items:center;gap:8px;z-index:2;}
+  .lightbox-toolbar button{background:var(--panel2);border:1px solid var(--border2);color:var(--text2);border-radius:4px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;}
+  .lightbox-toolbar button:hover{background:var(--panel);}
+  .lightbox-toolbar .lightbox-close{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .lightbox-zoom-label{color:var(--text2);font-size:12.5px;min-width:42px;text-align:center;}
+  .lightbox-stage{width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:grab;}
+  .lightbox-stage.grabbing{cursor:grabbing;}
+  .lightbox-stage img{max-width:90vw;max-height:82vh;user-select:none;pointer-events:none;transition:transform .04s linear;}
+  .lightbox-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:var(--muted);font-size:11.5px;}
   .replay-img-fallback{padding:50px 20px;color:var(--muted);font-size:13px;}
   .replay-meta{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;}
   .replay-meta div span.l{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;}
@@ -525,9 +543,14 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       <label>Second chart link</label>
       <input type="text" id="a_link2" placeholder="Paste the second chart snapshot link" oninput="updateChart2Preview('a_link2','a_imgWrap2')">
     </div>
+    <div class="field" id="a_link3Field" style="display:none;">
+      <label>Third chart link</label>
+      <input type="text" id="a_link3" placeholder="Paste the third chart snapshot link" oninput="updateChart2Preview('a_link3','a_imgWrap3')">
+    </div>
     <div class="img-grid" id="a_imgGrid">
       <div class="replay-img-wrap" id="a_imgWrap" style="display:none;"></div>
       <div class="replay-img-wrap" id="a_imgWrap2" style="display:none;"></div>
+      <div class="replay-img-wrap" id="a_imgWrap3" style="display:none;"></div>
     </div>
     <div class="ocr-raw" id="a_ocrRaw"></div>
 
@@ -550,6 +573,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
         </div>
         <div class="field"><label>R multiple<span class="badge-detected" id="a_rBadge"></span></label><input type="number" step="any" id="a_r" placeholder="e.g. 3"></div>
         <div class="field full" id="a_detectedInfo"></div>
+        <div class="field full" id="a_myMistakeField" style="display:none;"><label class="checkbox-label"><input type="checkbox" id="a_myMistake"> Loss due to my mistake</label></div>
         <div class="field full"><label>Notes</label><textarea id="a_notes" rows="3" placeholder="Add a note about this setup…" style="width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:3px;font-size:13px;font-family:inherit;resize:vertical;"></textarea></div>
       </div>
       <div class="modal-footer">
@@ -570,6 +594,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
     <div class="img-grid" id="replayImgGrid">
       <div class="replay-img-wrap" id="replayImgWrap"></div>
       <div class="replay-img-wrap" id="replayImgWrap2" style="display:none;"></div>
+      <div class="replay-img-wrap" id="replayImgWrap3" style="display:none;"></div>
     </div>
     <div class="markup-tools" id="markupTools">
       <span class="tool-label">MARKUP</span>
@@ -579,6 +604,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       <button type="button" data-markup-tool="text" onclick="setMarkupTool('text')">Text</button>
       <span class="markup-spacer"></span><div class="markup-colors" id="markupColors"></div><span class="markup-spacer"></span>
       <button type="button" onclick="undoMarkup()">Undo</button><button type="button" onclick="clearMarkup()">Clear</button>
+      <button type="button" onclick="const el=document.querySelector('#replayImgWrap img'); if(el) openImgLightbox(el.src)">&#128269; Zoom</button>
     </div>
     <p class="markup-hint" id="markupHint"></p>
     <div class="hint" id="replayLinkWrap"></div>
@@ -604,6 +630,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
     <div class="img-grid" id="e_imgGrid">
       <div class="replay-img-wrap" id="e_imgWrap"></div>
       <div class="replay-img-wrap" id="e_imgWrap2" style="display:none;"></div>
+      <div class="replay-img-wrap" id="e_imgWrap3" style="display:none;"></div>
     </div>
     <div class="form-grid">
       <div class="field"><label>Date</label><input type="date" id="e_date"></div>
@@ -624,6 +651,8 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       <div class="field"><label>R multiple</label><input type="number" step="any" id="e_r" placeholder="e.g. 3"></div>
       <div class="field full"><label>Chart Link</label><input type="text" id="e_link" placeholder="https://www.tradingview.com/x/CODE/" oninput="updateChart2Preview('e_link','e_imgWrap')"></div>
       <div class="field full" id="e_link2Field" style="display:none;"><label>Second chart link</label><input type="text" id="e_link2" placeholder="Paste the second chart snapshot link" oninput="updateChart2Preview('e_link2','e_imgWrap2')"></div>
+      <div class="field full" id="e_link3Field" style="display:none;"><label>Third chart link</label><input type="text" id="e_link3" placeholder="Paste the third chart snapshot link" oninput="updateChart2Preview('e_link3','e_imgWrap3')"></div>
+      <div class="field full" id="e_myMistakeField" style="display:none;"><label class="checkbox-label"><input type="checkbox" id="e_myMistake"> Loss due to my mistake</label></div>
       <div class="field full"><label>Notes</label><textarea id="e_notes" rows="3" placeholder="Add a note about this setup…" style="width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:3px;font-size:13px;font-family:inherit;resize:vertical;"></textarea></div>
     </div>
     <div class="modal-footer">
@@ -631,6 +660,21 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       <button class="primary" onclick="saveEditedSetup()">Save Changes</button>
     </div>
   </div>
+</div>
+
+<!-- Image zoom lightbox (shared across both profiles) -->
+<div class="lightbox-overlay" id="imgLightboxOverlay" onclick="if(event.target===this) closeImgLightbox()">
+  <div class="lightbox-toolbar">
+    <button type="button" onclick="lightboxZoomOut()">&minus;</button>
+    <span class="lightbox-zoom-label" id="lightboxZoomLabel">100%</span>
+    <button type="button" onclick="lightboxZoomIn()">+</button>
+    <button type="button" onclick="resetImgLightboxZoom()">Reset</button>
+    <button type="button" class="lightbox-close" onclick="closeImgLightbox()">&times; Close</button>
+  </div>
+  <div class="lightbox-stage" id="lightboxStage">
+    <img id="lightboxImg" src="" draggable="false">
+  </div>
+  <div class="lightbox-hint">Scroll or use +/&minus; to zoom &middot; drag to pan &middot; double-click to reset</div>
 </div>
 
 <script>
@@ -670,11 +714,12 @@ const STRATEGY_PROFILES = {
     subtitle: 'STRATEGY ACCURACY DASHBOARD',
     setupTypeLabel: 'Triangle Type',
     setupTypeLabelPlural: 'Triangle Types',
-    setupTypeOptions: ['Triangle 1','Triangle 2','Triangle 3','Triangle 4'],
+    setupTypeOptions: ['Triangle 1','Triangle 2','Triangle 3','Triangle 4','Triangle 5'],
     showCondition: true,
     conditionOptions: ['CONDITION 1','CONDITION 2','CONDITION 3'],
     timeframeOptions: ['1 MIN','3 MIN','5 MIN','15 MIN','30 MIN','1H'],
     chartCount: 2,
+    myMistakeTag: false,
     authDocId: 'auth',
     tradesDocId: 'trades',
     defaultData: DEFAULT_DATA
@@ -691,7 +736,8 @@ const STRATEGY_PROFILES = {
     showCondition: false,
     conditionOptions: [],
     timeframeOptions: ['1H','4H'],
-    chartCount: 2,
+    chartCount: 3,
+    myMistakeTag: true,
     authDocId: 'auth_fibo',
     tradesDocId: 'trades_fibo',
     defaultData: []
@@ -973,17 +1019,34 @@ function applyStrategyProfileToDom(profile){
   if(tfList) tfList.innerHTML = profile.timeframeOptions.map(o=>`<option value="${o}">`).join('');
 
   const showChart2 = profile.chartCount >= 2;
+  const showChart3 = profile.chartCount >= 3;
   ['a_link2Field','e_link2Field'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.style.display = showChart2 ? '' : 'none';
   });
+  ['a_link3Field','e_link3Field'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = showChart3 ? '' : 'none';
+  });
   ['a_imgGrid','e_imgGrid','replayImgGrid'].forEach(id=>{
     const el = document.getElementById(id);
-    if(el) el.classList.toggle('two-col', showChart2);
+    if(el){
+      el.classList.toggle('two-col', profile.chartCount === 2);
+      el.classList.toggle('three-col', showChart3);
+    }
   });
   ['analyzerModal','replayModal','editModal'].forEach(id=>{
     const el = document.getElementById(id);
-    if(el) el.classList.toggle('modal-wide', showChart2);
+    if(el){
+      el.classList.toggle('modal-wide', showChart2);
+      el.classList.toggle('modal-wide3', showChart3);
+    }
+  });
+
+  const showMyMistake = !!profile.myMistakeTag;
+  ['a_myMistakeField','e_myMistakeField'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.style.display = showMyMistake ? '' : 'none';
   });
 }
 
@@ -1151,12 +1214,66 @@ function updateChart2Preview(inputId, wrapId){
   if(!wrap) return;
   if(code){
     wrap.style.display = '';
-    wrap.innerHTML = `<img src="${imageUrlFor(code)}" style="max-width:100%;display:block;margin:0 auto;" onerror="this.parentElement.innerHTML='<div class=hint style=padding:14px>Could not load preview</div>'">`;
+    wrap.innerHTML = `<img src="${imageUrlFor(code)}" class="zoomable-preview" style="max-width:100%;display:block;margin:0 auto;" onclick="openImgLightbox(this.src)" onerror="this.parentElement.innerHTML='<div class=hint style=padding:14px>Could not load preview</div>'">`;
   } else {
     wrap.style.display = 'none';
     wrap.innerHTML = '';
   }
 }
+
+/* ===================== Image zoom lightbox ===================== */
+let lightboxState = { scale: 1, panX: 0, panY: 0, dragging: false, startX: 0, startY: 0 };
+function openImgLightbox(src){
+  if(!src) return;
+  document.getElementById('lightboxImg').src = src;
+  resetImgLightboxZoom();
+  document.getElementById('imgLightboxOverlay').classList.add('open');
+}
+function closeImgLightbox(){
+  document.getElementById('imgLightboxOverlay').classList.remove('open');
+}
+function applyLightboxTransform(){
+  const img = document.getElementById('lightboxImg');
+  img.style.transform = `translate(${lightboxState.panX}px, ${lightboxState.panY}px) scale(${lightboxState.scale})`;
+  const label = document.getElementById('lightboxZoomLabel');
+  if(label) label.textContent = Math.round(lightboxState.scale * 100) + '%';
+}
+function resetImgLightboxZoom(){
+  lightboxState = { scale: 1, panX: 0, panY: 0, dragging: false, startX: 0, startY: 0 };
+  applyLightboxTransform();
+}
+function lightboxZoomIn(){ lightboxState.scale = Math.min(6, +(lightboxState.scale + 0.25).toFixed(2)); applyLightboxTransform(); }
+function lightboxZoomOut(){ lightboxState.scale = Math.max(0.5, +(lightboxState.scale - 0.25).toFixed(2)); applyLightboxTransform(); }
+(function initLightboxInteractions(){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    const stage = document.getElementById('lightboxStage');
+    const img = document.getElementById('lightboxImg');
+    if(!stage || !img) return;
+    stage.addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.15 : -0.15;
+      lightboxState.scale = Math.min(6, Math.max(0.5, +(lightboxState.scale + delta).toFixed(2)));
+      applyLightboxTransform();
+    }, { passive:false });
+    stage.addEventListener('mousedown', (e)=>{
+      lightboxState.dragging = true;
+      lightboxState.startX = e.clientX - lightboxState.panX;
+      lightboxState.startY = e.clientY - lightboxState.panY;
+      stage.classList.add('grabbing');
+    });
+    window.addEventListener('mousemove', (e)=>{
+      if(!lightboxState.dragging) return;
+      lightboxState.panX = e.clientX - lightboxState.startX;
+      lightboxState.panY = e.clientY - lightboxState.startY;
+      applyLightboxTransform();
+    });
+    window.addEventListener('mouseup', ()=>{
+      lightboxState.dragging = false;
+      stage.classList.remove('grabbing');
+    });
+    stage.addEventListener('dblclick', resetImgLightboxZoom);
+  });
+})();
 
 /* ===================== Display settings (accent / density / thumbnails) ===================== */
 function toggleDisplayPop(){ document.getElementById('displayPop').classList.toggle('open'); }
@@ -1975,13 +2092,13 @@ function renderTable(){
     const rDisplay = (r.r===null||r.r===undefined||isNaN(r.r)) ? '—' : `<span class="${r.r>=0?'r-pos':'r-neg'}">${r.r>=0?'+':''}${r.r}R</span>`;
     const idx = rows.indexOf(r);
     return `<tr class="trow" onclick="openReplay(${idx})">
-      <td>${r.date}${r.notes?' <span title="'+escapeHtml(r.notes)+'" style="opacity:.75;">📝</span>':''}</td>
+      <td>${r.date}${r.notes?' <span title="'+escapeHtml(r.notes)+'" style="opacity:.75;">📝</span>':''}${(activeProfile.myMistakeTag && r.myMistake)?' <span title="Loss due to my mistake" style="color:var(--red);">✔</span>':''}</td>
       <td>${escapeHtml(r.timeframe||'—')}</td>
       <td>${escapeHtml(r.triangleType||'—')}</td>
       <td class="col-cond">${escapeHtml(r.condition||'—')}</td>
       <td><span class="pill ${r.outcome}">${r.outcome==='win'?'TP Hit':r.outcome==='loss'?'SL Hit':'Open'}</span></td>
       <td>${rDisplay}</td>
-      <td class="col-chart ${prefs.showThumbs?'':'hide-thumbs'}">${img ? `<img class="thumb" src="${img}" loading="lazy" onerror="this.outerHTML='<div class=&quot;thumb-fallback&quot;>no preview</div>'">` : '<div class="thumb-fallback">—</div>'}</td>
+      <td class="col-chart ${prefs.showThumbs?'':'hide-thumbs'}">${img ? `<img class="thumb zoomable-preview" src="${img}" loading="lazy" onclick="event.stopPropagation(); openImgLightbox(this.src)" onerror="this.outerHTML='<div class=&quot;thumb-fallback&quot;>no preview</div>'">` : '<div class="thumb-fallback">—</div>'}</td>
     </tr>`;
   }).join('');
 
@@ -1991,7 +2108,7 @@ function renderTable(){
     const idx = rows.indexOf(r);
     return `<div class="trade-card" onclick="openReplay(${idx})">
       <div class="top">
-        <div><div class="ttype">${escapeHtml(r.triangleType||'Setup')}</div><div class="meta">${r.date} · ${escapeHtml(r.timeframe||'—')}${r.notes?' · 📝':''}</div></div>
+        <div><div class="ttype">${escapeHtml(r.triangleType||'Setup')}</div><div class="meta">${r.date} · ${escapeHtml(r.timeframe||'—')}${r.notes?' · 📝':''}${(activeProfile.myMistakeTag && r.myMistake)?' · <span title="Loss due to my mistake" style="color:var(--red);">✔</span>':''}</div></div>
         <span class="pill ${r.outcome}">${r.outcome==='win'?'TP Hit':r.outcome==='loss'?'SL Hit':'Open'}</span>
       </div>
       <div class="bottom"><div class="cond col-cond">${escapeHtml(r.condition||'—')}</div><div class="${rClass}" style="font-weight:700;">${rDisplay}</div></div>
@@ -2013,6 +2130,7 @@ function openReplay(idx){
     <div class="col-cond"><span class="l">Condition</span>${escapeHtml(r.condition||'—')}</div>
     <div><span class="l">Outcome</span><span class="pill ${r.outcome}">${r.outcome==='win'?'TP Hit':r.outcome==='loss'?'SL Hit':'Open'}</span></div>
     <div><span class="l">Result</span>${(r.r===null||r.r===undefined||isNaN(r.r))?'—':((r.r>=0?'+':'')+r.r+'R')}</div>
+    ${(activeProfile.myMistakeTag && r.myMistake) ? '<div><span class="l">Tag</span><span class="pill loss">Loss due to my mistake</span></div>' : ''}
   `;
   const img = imageUrlFor(r.code);
   document.getElementById('replayImgWrap').innerHTML = img
@@ -2022,14 +2140,24 @@ function openReplay(idx){
   const img2 = imageUrlFor(r.code2);
   if(img2){
     img2Wrap.style.display = '';
-    img2Wrap.innerHTML = `<img src="${img2}" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
+    img2Wrap.innerHTML = `<img src="${img2}" class="zoomable-preview" onclick="openImgLightbox(this.src)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
   } else {
     img2Wrap.style.display = 'none';
     img2Wrap.innerHTML = '';
   }
+  const img3Wrap = document.getElementById('replayImgWrap3');
+  const img3 = imageUrlFor(r.code3);
+  if(img3){
+    img3Wrap.style.display = '';
+    img3Wrap.innerHTML = `<img src="${img3}" class="zoomable-preview" onclick="openImgLightbox(this.src)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
+  } else {
+    img3Wrap.style.display = 'none';
+    img3Wrap.innerHTML = '';
+  }
   const linkParts = [];
   if(r.link) linkParts.push(`<a class="link" href="${r.link}" target="_blank">Open full chart on TradingView ↗</a>`);
   if(r.link2) linkParts.push(`<a class="link" href="${r.link2}" target="_blank">Open second chart on TradingView ↗</a>`);
+  if(r.link3) linkParts.push(`<a class="link" href="${r.link3}" target="_blank">Open third chart on TradingView ↗</a>`);
   document.getElementById('replayLinkWrap').innerHTML = linkParts.join('&nbsp;&nbsp;');
   const imgWrap = document.getElementById('replayImgWrap');
   document.getElementById('markupTools').classList.toggle('show', !!img);
@@ -2109,12 +2237,16 @@ function openEditModal(idx){
   document.getElementById('e_r').value = (r.r===null||r.r===undefined) ? '' : r.r;
   document.getElementById('e_link').value = r.link || '';
   document.getElementById('e_link2').value = r.link2 || '';
+  document.getElementById('e_link3').value = r.link3 || '';
   document.getElementById('e_notes').value = r.notes || '';
+  const e_myMistakeEl = document.getElementById('e_myMistake');
+  if(e_myMistakeEl) e_myMistakeEl.checked = !!r.myMistake;
   const img = imageUrlFor(r.code);
   document.getElementById('e_imgWrap').innerHTML = img
-    ? `<img src="${img}" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`
+    ? `<img src="${img}" class="zoomable-preview" onclick="openImgLightbox(this.src)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`
     : `<div class="replay-img-fallback">No chart snapshot linked for this setup.</div>`;
   updateChart2Preview('e_link2','e_imgWrap2');
+  updateChart2Preview('e_link3','e_imgWrap3');
   document.getElementById('editModalOverlay').classList.add('open');
 }
 function closeEditModal(){ document.getElementById('editModalOverlay').classList.remove('open'); }
@@ -2144,9 +2276,13 @@ function saveEditedSetup(){
   const link2 = activeProfile.chartCount >= 2 ? (document.getElementById('e_link2').value.trim() || null) : (rows[idx].link2 || null);
   let code2 = rows[idx].code2 || null;
   if(link2){ const m2 = link2.match(/\/x\/([^\/\s]+)\/?/); if(m2) code2 = m2[1]; } else { code2 = null; }
+  const link3 = activeProfile.chartCount >= 3 ? (document.getElementById('e_link3').value.trim() || null) : (rows[idx].link3 || null);
+  let code3 = rows[idx].code3 || null;
+  if(link3){ const m3 = link3.match(/\/x\/([^\/\s]+)\/?/); if(m3) code3 = m3[1]; } else { code3 = null; }
+  const myMistake = activeProfile.myMistakeTag ? !!document.getElementById('e_myMistake').checked : (rows[idx].myMistake || false);
   const notes = document.getElementById('e_notes').value.trim() || null;
 
-  rows[idx] = { date, timeframe, triangleType, condition, link, code, link2, code2, outcome, r: (r===null||isNaN(r))?null:r, notes };
+  rows[idx] = { date, timeframe, triangleType, condition, link, code, link2, code2, link3, code3, myMistake, outcome, r: (r===null||isNaN(r))?null:r, notes };
   persist();
   refreshAll();
   closeEditModal();
@@ -2245,6 +2381,11 @@ function openChartAnalyzer(){
   document.getElementById('a_link2').value = '';
   document.getElementById('a_imgWrap2').style.display = 'none';
   document.getElementById('a_imgWrap2').innerHTML = '';
+  document.getElementById('a_link3').value = '';
+  document.getElementById('a_imgWrap3').style.display = 'none';
+  document.getElementById('a_imgWrap3').innerHTML = '';
+  const a_myMistakeEl = document.getElementById('a_myMistake');
+  if(a_myMistakeEl) a_myMistakeEl.checked = false;
   document.getElementById('a_ocrRaw').style.display = 'none';
   document.getElementById('a_ocrRaw').textContent = '';
   document.getElementById('a_form').style.display = 'none';
@@ -2401,12 +2542,15 @@ function addAnalyzedSetup(){
 
   const link2 = activeProfile.chartCount >= 2 ? (document.getElementById('a_link2').value.trim() || null) : null;
   const code2 = link2 ? codeFromLink(link2) : null;
+  const link3 = activeProfile.chartCount >= 3 ? (document.getElementById('a_link3').value.trim() || null) : null;
+  const code3 = link3 ? codeFromLink(link3) : null;
+  const myMistake = activeProfile.myMistakeTag ? !!document.getElementById('a_myMistake').checked : false;
 
   const notes = document.getElementById('a_notes').value.trim() || null;
   rows.push({
     date, timeframe, triangleType, condition,
     link: analyzerState.link, code: analyzerState.code,
-    link2, code2,
+    link2, code2, link3, code3, myMistake,
     outcome, r: (r===null || isNaN(r))?null:r, notes
   });
   persist();
