@@ -147,6 +147,7 @@
   .field{margin-bottom:12px;}
   .checkbox-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;}
   .chart-link-label{color:var(--accent);font-weight:700;}
+  .replay-chart-label{font-size:16px;font-weight:800;color:var(--accent);text-align:center;padding:10px 8px 6px;letter-spacing:.02em;background:var(--panel2);border-top:1px solid var(--border2);}
   .checkbox-label input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
   .form-grid .full{grid-column:1/-1;font-size:12px;color:var(--muted);}
@@ -1349,8 +1350,11 @@ function lightboxZoomOut(){ lightboxState.scale = Math.max(0.5, +(lightboxState.
       lightboxState.scale = Math.min(6, Math.max(0.5, +(lightboxState.scale + delta).toFixed(2)));
       applyLightboxTransform();
     }, { passive:false });
+    let dragMoved = false, downX = 0, downY = 0;
     stage.addEventListener('mousedown', (e)=>{
       if(e.target && e.target.classList && e.target.classList.contains('markup-canvas')) return;
+      dragMoved = false;
+      downX = e.clientX; downY = e.clientY;
       lightboxState.dragging = true;
       lightboxState.startX = e.clientX - lightboxState.panX;
       lightboxState.startY = e.clientY - lightboxState.panY;
@@ -1358,6 +1362,7 @@ function lightboxZoomOut(){ lightboxState.scale = Math.max(0.5, +(lightboxState.
     });
     window.addEventListener('mousemove', (e)=>{
       if(!lightboxState.dragging) return;
+      if(Math.abs(e.clientX - downX) > 4 || Math.abs(e.clientY - downY) > 4) dragMoved = true;
       lightboxState.panX = e.clientX - lightboxState.startX;
       lightboxState.panY = e.clientY - lightboxState.startY;
       applyLightboxTransform();
@@ -1365,6 +1370,11 @@ function lightboxZoomOut(){ lightboxState.scale = Math.max(0.5, +(lightboxState.
     window.addEventListener('mouseup', ()=>{
       lightboxState.dragging = false;
       stage.classList.remove('grabbing');
+    });
+    /* Click anywhere outside the chart image itself (the backdrop or empty stage area) closes the lightbox — no need to hit the Close button. */
+    stage.addEventListener('click', (e)=>{
+      if(dragMoved) return;
+      if(e.target === stage || e.target === wrap) closeImgLightbox();
     });
     stage.addEventListener('dblclick', (e)=>{
       if(e.target && e.target.classList && e.target.classList.contains('markup-canvas')) return;
@@ -2236,15 +2246,17 @@ function openReplay(idx){
     <div><span class="l">Result</span>${(r.r===null||r.r===undefined||isNaN(r.r))?'—':((r.r>=0?'+':'')+r.r+'R')}</div>
     ${(activeProfile.myMistakeTag && r.myMistake) ? '<div><span class="l">Tag</span><span class="pill loss">Loss due to my mistake</span></div>' : ''}
   `;
+  const chartLabels = activeProfile.chartLabels;
+  const labelHtml = (i)=> chartLabels && chartLabels[i] ? `<div class="replay-chart-label">${escapeHtml(chartLabels[i])}</div>` : '';
   const img = imageUrlFor(r.code);
   document.getElementById('replayImgWrap').innerHTML = img
-    ? `<img src="${img}" class="zoomable-preview" onclick="openReplayImageLightbox(0)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable — open the chart link below.</div>'">`
+    ? `<img src="${img}" class="zoomable-preview" onclick="openReplayImageLightbox(0)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable — open the chart link below.</div>'">${labelHtml(0)}`
     : `<div class="replay-img-fallback">No chart snapshot linked for this setup.</div>`;
   const img2Wrap = document.getElementById('replayImgWrap2');
   const img2 = imageUrlFor(r.code2);
   if(img2){
     img2Wrap.style.display = '';
-    img2Wrap.innerHTML = `<img src="${img2}" class="zoomable-preview" onclick="openReplayImageLightbox(1)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
+    img2Wrap.innerHTML = `<img src="${img2}" class="zoomable-preview" onclick="openReplayImageLightbox(1)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">${labelHtml(1)}`;
   } else {
     img2Wrap.style.display = 'none';
     img2Wrap.innerHTML = '';
@@ -2253,7 +2265,7 @@ function openReplay(idx){
   const img3 = imageUrlFor(r.code3);
   if(img3){
     img3Wrap.style.display = '';
-    img3Wrap.innerHTML = `<img src="${img3}" class="zoomable-preview" onclick="openReplayImageLightbox(2)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
+    img3Wrap.innerHTML = `<img src="${img3}" class="zoomable-preview" onclick="openReplayImageLightbox(2)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">${labelHtml(2)}`;
   } else {
     img3Wrap.style.display = 'none';
     img3Wrap.innerHTML = '';
