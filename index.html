@@ -146,6 +146,7 @@
   select{background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:8px 10px;border-radius:3px;font-size:13px;font-family:inherit;width:100%;}
   .field{margin-bottom:12px;}
   .checkbox-label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer;}
+  .chart-link-label{color:var(--accent);font-weight:700;}
   .checkbox-label input[type="checkbox"]{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
   .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
   .form-grid .full{grid-column:1/-1;font-size:12px;color:var(--muted);}
@@ -175,8 +176,17 @@
   .lightbox-zoom-label{color:var(--text2);font-size:12.5px;min-width:42px;text-align:center;}
   .lightbox-stage{width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:grab;}
   .lightbox-stage.grabbing{cursor:grabbing;}
-  .lightbox-stage img{max-width:90vw;max-height:82vh;user-select:none;pointer-events:none;transition:transform .04s linear;}
+  .lightbox-transform-wrap{position:relative;display:inline-block;line-height:0;transition:transform .04s linear;}
+  .lightbox-stage img{max-width:90vw;max-height:82vh;user-select:none;pointer-events:none;display:block;}
+  .lightbox-transform-wrap .markup-canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;}
   .lightbox-hint{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:var(--muted);font-size:11.5px;}
+  .lightbox-markup-bar{position:absolute;top:16px;left:16px;z-index:2;max-width:min(680px,70vw);}
+  .lightbox-markup-bar .markup-tools{margin:0;}
+  .lightbox-markup-bar .markup-hint{margin:6px 0 0;color:#ccc;}
+  .lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);z-index:2;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);color:#fff;width:46px;height:46px;border-radius:50%;font-size:18px;cursor:pointer;line-height:1;}
+  .lightbox-nav:hover{background:rgba(255,255,255,.2);}
+  .lightbox-nav-prev{left:18px;}
+  .lightbox-nav-next{right:18px;}
   .replay-img-fallback{padding:50px 20px;color:var(--muted);font-size:13px;}
   .replay-meta{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:16px;font-size:13px;}
   .replay-meta div span.l{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;}
@@ -534,17 +544,17 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       <h2>Add Setup from Chart Link</h2>
     </div>
     <div class="field">
-      <label>TradingView chart link (e.g. https://www.tradingview.com/x/CODE/)</label>
+      <label id="a_linkLabel" class="chart-link-label">TradingView chart link (e.g. https://www.tradingview.com/x/CODE/)</label>
       <input type="text" id="a_link" placeholder="Paste the chart snapshot link">
     </div>
     <button class="ghost" onclick="analyzeChart()">Fetch &amp; Analyze</button>
     <div class="analyzer-status" id="a_status"><div class="spinner" id="a_spinner"></div><span id="a_statusText"></span></div>
     <div class="field" id="a_link2Field" style="display:none;">
-      <label>Second chart link</label>
+      <label id="a_link2Label" class="chart-link-label">Second chart link</label>
       <input type="text" id="a_link2" placeholder="Paste the second chart snapshot link" oninput="updateChart2Preview('a_link2','a_imgWrap2')">
     </div>
     <div class="field" id="a_link3Field" style="display:none;">
-      <label>Third chart link</label>
+      <label id="a_link3Label" class="chart-link-label">Third chart link</label>
       <input type="text" id="a_link3" placeholder="Paste the third chart snapshot link" oninput="updateChart2Preview('a_link3','a_imgWrap3')">
     </div>
     <div class="img-grid" id="a_imgGrid">
@@ -596,17 +606,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
       <div class="replay-img-wrap" id="replayImgWrap2" style="display:none;"></div>
       <div class="replay-img-wrap" id="replayImgWrap3" style="display:none;"></div>
     </div>
-    <div class="markup-tools" id="markupTools">
-      <span class="tool-label">MARKUP</span>
-      <button type="button" data-markup-tool="pen" onclick="setMarkupTool('pen')">Pen</button>
-      <button type="button" data-markup-tool="arrow" onclick="setMarkupTool('arrow')">Arrow</button>
-      <button type="button" data-markup-tool="rect" onclick="setMarkupTool('rect')">Box</button>
-      <button type="button" data-markup-tool="text" onclick="setMarkupTool('text')">Text</button>
-      <span class="markup-spacer"></span><div class="markup-colors" id="markupColors"></div><span class="markup-spacer"></span>
-      <button type="button" onclick="undoMarkup()">Undo</button><button type="button" onclick="clearMarkup()">Clear</button>
-      <button type="button" onclick="const el=document.querySelector('#replayImgWrap img'); if(el) openImgLightbox(el.src)">&#128269; Zoom</button>
-    </div>
-    <p class="markup-hint" id="markupHint"></p>
+    <p class="hint" style="margin:8px 0 0;">Click any chart above to open it full-screen &mdash; you can zoom, page between charts, and draw on the main chart there.</p>
     <div class="hint" id="replayLinkWrap"></div>
     <div class="field" style="margin-top:14px;">
       <label>Notes</label>
@@ -649,9 +649,9 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
         </select>
       </div>
       <div class="field"><label>R multiple</label><input type="number" step="any" id="e_r" placeholder="e.g. 3"></div>
-      <div class="field full"><label>Chart Link</label><input type="text" id="e_link" placeholder="https://www.tradingview.com/x/CODE/" oninput="updateChart2Preview('e_link','e_imgWrap')"></div>
-      <div class="field full" id="e_link2Field" style="display:none;"><label>Second chart link</label><input type="text" id="e_link2" placeholder="Paste the second chart snapshot link" oninput="updateChart2Preview('e_link2','e_imgWrap2')"></div>
-      <div class="field full" id="e_link3Field" style="display:none;"><label>Third chart link</label><input type="text" id="e_link3" placeholder="Paste the third chart snapshot link" oninput="updateChart2Preview('e_link3','e_imgWrap3')"></div>
+      <div class="field full"><label id="e_linkLabel" class="chart-link-label">Chart Link</label><input type="text" id="e_link" placeholder="https://www.tradingview.com/x/CODE/" oninput="updateChart2Preview('e_link','e_imgWrap')"></div>
+      <div class="field full" id="e_link2Field" style="display:none;"><label id="e_link2Label" class="chart-link-label">Second chart link</label><input type="text" id="e_link2" placeholder="Paste the second chart snapshot link" oninput="updateChart2Preview('e_link2','e_imgWrap2')"></div>
+      <div class="field full" id="e_link3Field" style="display:none;"><label id="e_link3Label" class="chart-link-label">Third chart link</label><input type="text" id="e_link3" placeholder="Paste the third chart snapshot link" oninput="updateChart2Preview('e_link3','e_imgWrap3')"></div>
       <div class="field full" id="e_myMistakeField" style="display:none;"><label class="checkbox-label"><input type="checkbox" id="e_myMistake"> Loss due to my mistake</label></div>
       <div class="field full"><label>Notes</label><textarea id="e_notes" rows="3" placeholder="Add a note about this setup…" style="width:100%;background:var(--panel2);border:1px solid var(--border2);color:var(--text);padding:9px 11px;border-radius:3px;font-size:13px;font-family:inherit;resize:vertical;"></textarea></div>
     </div>
@@ -671,10 +671,26 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
     <button type="button" onclick="resetImgLightboxZoom()">Reset</button>
     <button type="button" class="lightbox-close" onclick="closeImgLightbox()">&times; Close</button>
   </div>
-  <div class="lightbox-stage" id="lightboxStage">
-    <img id="lightboxImg" src="" draggable="false">
+  <div class="lightbox-markup-bar" id="lightboxMarkupBar" style="display:none;">
+    <div class="markup-tools show" id="markupTools">
+      <span class="tool-label">MARKUP</span>
+      <button type="button" data-markup-tool="pen" onclick="setMarkupTool('pen')">Pen</button>
+      <button type="button" data-markup-tool="arrow" onclick="setMarkupTool('arrow')">Arrow</button>
+      <button type="button" data-markup-tool="rect" onclick="setMarkupTool('rect')">Box</button>
+      <button type="button" data-markup-tool="text" onclick="setMarkupTool('text')">Text</button>
+      <span class="markup-spacer"></span><div class="markup-colors" id="markupColors"></div><span class="markup-spacer"></span>
+      <button type="button" onclick="undoMarkup()">Undo</button><button type="button" onclick="clearMarkup()">Clear</button>
+    </div>
+    <p class="markup-hint" id="markupHint">Choose a tool, then draw directly on the chart. Markups save with this trade.</p>
   </div>
-  <div class="lightbox-hint">Scroll or use +/&minus; to zoom &middot; drag to pan &middot; double-click to reset</div>
+  <button type="button" class="lightbox-nav lightbox-nav-prev" id="lightboxPrevBtn" onclick="event.stopPropagation(); lightboxNav(-1)" style="display:none;">&#10094;</button>
+  <button type="button" class="lightbox-nav lightbox-nav-next" id="lightboxNextBtn" onclick="event.stopPropagation(); lightboxNav(1)" style="display:none;">&#10095;</button>
+  <div class="lightbox-stage" id="lightboxStage">
+    <div class="lightbox-transform-wrap" id="lightboxTransformWrap">
+      <img id="lightboxImg" src="" draggable="false">
+    </div>
+  </div>
+  <div class="lightbox-hint" id="lightboxHint">Scroll or use +/&minus; to zoom &middot; drag to pan &middot; double-click to reset</div>
 </div>
 
 <script>
@@ -737,6 +753,7 @@ const STRATEGY_PROFILES = {
     conditionOptions: [],
     timeframeOptions: ['1H','4H'],
     chartCount: 3,
+    chartLabels: ['15 Min Chart', 'Hourly Chart', 'Daily Bias View'],
     myMistakeTag: true,
     authDocId: 'auth_fibo',
     tradesDocId: 'trades_fibo',
@@ -1048,6 +1065,20 @@ function applyStrategyProfileToDom(profile){
     const el = document.getElementById(id);
     if(el) el.style.display = showMyMistake ? '' : 'none';
   });
+
+  const chartLabels = profile.chartLabels || ['Chart Link', 'Second chart link', 'Third chart link'];
+  const linkLabelEl = document.getElementById('a_linkLabel');
+  if(linkLabelEl) linkLabelEl.textContent = chartLabels[0] + ' link (e.g. https://www.tradingview.com/x/CODE/)';
+  const eLinkLabelEl = document.getElementById('e_linkLabel');
+  if(eLinkLabelEl) eLinkLabelEl.textContent = chartLabels[0] + ' Link';
+  const a2LabelEl = document.getElementById('a_link2Label');
+  if(a2LabelEl) a2LabelEl.textContent = chartLabels[1] + ' link';
+  const e2LabelEl = document.getElementById('e_link2Label');
+  if(e2LabelEl) e2LabelEl.textContent = chartLabels[1] + ' link';
+  const a3LabelEl = document.getElementById('a_link3Label');
+  if(a3LabelEl) a3LabelEl.textContent = chartLabels[2] + ' link';
+  const e3LabelEl = document.getElementById('e_link3Label');
+  if(e3LabelEl) e3LabelEl.textContent = chartLabels[2] + ' link';
 }
 
 async function refreshLockFormForEmail(email){
@@ -1221,20 +1252,83 @@ function updateChart2Preview(inputId, wrapId){
   }
 }
 
-/* ===================== Image zoom lightbox ===================== */
+/* ===================== Image zoom lightbox (with gallery paging + markup) ===================== */
 let lightboxState = { scale: 1, panX: 0, panY: 0, dragging: false, startX: 0, startY: 0 };
+let lightboxGallery = { images: [], index: 0, allowMarkup: false };
+
+/* Simple single-image open (table thumbnails, add/edit previews with no siblings) */
 function openImgLightbox(src){
   if(!src) return;
+  openImgLightboxGallery([src], 0, { allowMarkup:false });
+}
+
+/* Gallery open: images = array of src strings (nulls filtered), startIndex = which to show first.
+ * opts.allowMarkup = true means index 0 (the trade's main chart) gets drawing tools. */
+function openImgLightboxGallery(images, startIndex, opts){
+  images = (images || []).filter(Boolean);
+  if(!images.length) return;
+  opts = opts || {};
+  lightboxGallery = { images, index: Math.max(0, Math.min(startIndex || 0, images.length - 1)), allowMarkup: !!opts.allowMarkup };
+  document.getElementById('imgLightboxOverlay').classList.add('open');
+  showLightboxImage();
+}
+
+/* Convenience: open the Replay modal's own chart set (main/second/third) starting at a given index. */
+function openReplayImageLightbox(startIndex){
+  if(currentReplayIdx===null || !rows[currentReplayIdx]) return;
+  const r = rows[currentReplayIdx];
+  const all = [imageUrlFor(r.code), imageUrlFor(r.code2), imageUrlFor(r.code3)];
+  const images = [];
+  let mappedIndex = 0;
+  all.forEach((src, i)=>{ if(src){ if(i===startIndex) mappedIndex = images.length; images.push(src); } });
+  openImgLightboxGallery(images, mappedIndex, { allowMarkup:true });
+}
+
+function lightboxNav(delta){
+  if(lightboxGallery.images.length < 2) return;
+  let idx = lightboxGallery.index + delta;
+  if(idx < 0) idx = lightboxGallery.images.length - 1;
+  if(idx >= lightboxGallery.images.length) idx = 0;
+  lightboxGallery.index = idx;
+  showLightboxImage();
+}
+
+function showLightboxImage(){
+  const src = lightboxGallery.images[lightboxGallery.index];
   document.getElementById('lightboxImg').src = src;
   resetImgLightboxZoom();
-  document.getElementById('imgLightboxOverlay').classList.add('open');
+  const multi = lightboxGallery.images.length > 1;
+  document.getElementById('lightboxPrevBtn').style.display = multi ? '' : 'none';
+  document.getElementById('lightboxNextBtn').style.display = multi ? '' : 'none';
+
+  const showMarkup = lightboxGallery.allowMarkup && lightboxGallery.index === 0;
+  const bar = document.getElementById('lightboxMarkupBar');
+  const wrap = document.getElementById('lightboxTransformWrap');
+  if(showMarkup){
+    bar.style.display = '';
+    const img = document.getElementById('lightboxImg');
+    const connect = ()=> setupMarkupCanvas(wrap);
+    img.addEventListener('load', connect, { once:true });
+    if(img.complete && img.naturalWidth) connect();
+  } else {
+    bar.style.display = 'none';
+    const old = wrap.querySelector('.markup-canvas');
+    if(old) old.remove();
+    markupState.canvas = null;
+  }
 }
+
 function closeImgLightbox(){
   document.getElementById('imgLightboxOverlay').classList.remove('open');
+  const wrap = document.getElementById('lightboxTransformWrap');
+  const old = wrap && wrap.querySelector('.markup-canvas');
+  if(old) old.remove();
+  markupState.canvas = null;
+  document.getElementById('lightboxMarkupBar').style.display = 'none';
 }
 function applyLightboxTransform(){
-  const img = document.getElementById('lightboxImg');
-  img.style.transform = `translate(${lightboxState.panX}px, ${lightboxState.panY}px) scale(${lightboxState.scale})`;
+  const wrap = document.getElementById('lightboxTransformWrap');
+  wrap.style.transform = `translate(${lightboxState.panX}px, ${lightboxState.panY}px) scale(${lightboxState.scale})`;
   const label = document.getElementById('lightboxZoomLabel');
   if(label) label.textContent = Math.round(lightboxState.scale * 100) + '%';
 }
@@ -1247,8 +1341,8 @@ function lightboxZoomOut(){ lightboxState.scale = Math.max(0.5, +(lightboxState.
 (function initLightboxInteractions(){
   document.addEventListener('DOMContentLoaded', ()=>{
     const stage = document.getElementById('lightboxStage');
-    const img = document.getElementById('lightboxImg');
-    if(!stage || !img) return;
+    const wrap = document.getElementById('lightboxTransformWrap');
+    if(!stage || !wrap) return;
     stage.addEventListener('wheel', (e)=>{
       e.preventDefault();
       const delta = e.deltaY < 0 ? 0.15 : -0.15;
@@ -1256,6 +1350,7 @@ function lightboxZoomOut(){ lightboxState.scale = Math.max(0.5, +(lightboxState.
       applyLightboxTransform();
     }, { passive:false });
     stage.addEventListener('mousedown', (e)=>{
+      if(e.target && e.target.classList && e.target.classList.contains('markup-canvas')) return;
       lightboxState.dragging = true;
       lightboxState.startX = e.clientX - lightboxState.panX;
       lightboxState.startY = e.clientY - lightboxState.panY;
@@ -1271,7 +1366,16 @@ function lightboxZoomOut(){ lightboxState.scale = Math.max(0.5, +(lightboxState.
       lightboxState.dragging = false;
       stage.classList.remove('grabbing');
     });
-    stage.addEventListener('dblclick', resetImgLightboxZoom);
+    stage.addEventListener('dblclick', (e)=>{
+      if(e.target && e.target.classList && e.target.classList.contains('markup-canvas')) return;
+      resetImgLightboxZoom();
+    });
+    document.addEventListener('keydown', (e)=>{
+      if(!document.getElementById('imgLightboxOverlay').classList.contains('open')) return;
+      if(e.key === 'ArrowLeft') lightboxNav(-1);
+      if(e.key === 'ArrowRight') lightboxNav(1);
+      if(e.key === 'Escape') closeImgLightbox();
+    });
   });
 })();
 
@@ -2134,13 +2238,13 @@ function openReplay(idx){
   `;
   const img = imageUrlFor(r.code);
   document.getElementById('replayImgWrap').innerHTML = img
-    ? `<img src="${img}" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable — open the chart link below.</div>'">`
+    ? `<img src="${img}" class="zoomable-preview" onclick="openReplayImageLightbox(0)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable — open the chart link below.</div>'">`
     : `<div class="replay-img-fallback">No chart snapshot linked for this setup.</div>`;
   const img2Wrap = document.getElementById('replayImgWrap2');
   const img2 = imageUrlFor(r.code2);
   if(img2){
     img2Wrap.style.display = '';
-    img2Wrap.innerHTML = `<img src="${img2}" class="zoomable-preview" onclick="openImgLightbox(this.src)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
+    img2Wrap.innerHTML = `<img src="${img2}" class="zoomable-preview" onclick="openReplayImageLightbox(1)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
   } else {
     img2Wrap.style.display = 'none';
     img2Wrap.innerHTML = '';
@@ -2149,7 +2253,7 @@ function openReplay(idx){
   const img3 = imageUrlFor(r.code3);
   if(img3){
     img3Wrap.style.display = '';
-    img3Wrap.innerHTML = `<img src="${img3}" class="zoomable-preview" onclick="openImgLightbox(this.src)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
+    img3Wrap.innerHTML = `<img src="${img3}" class="zoomable-preview" onclick="openReplayImageLightbox(2)" onerror="this.parentElement.innerHTML='<div class=&quot;replay-img-fallback&quot;>Preview unavailable.</div>'">`;
   } else {
     img3Wrap.style.display = 'none';
     img3Wrap.innerHTML = '';
@@ -2159,16 +2263,6 @@ function openReplay(idx){
   if(r.link2) linkParts.push(`<a class="link" href="${r.link2}" target="_blank">Open second chart on TradingView ↗</a>`);
   if(r.link3) linkParts.push(`<a class="link" href="${r.link3}" target="_blank">Open third chart on TradingView ↗</a>`);
   document.getElementById('replayLinkWrap').innerHTML = linkParts.join('&nbsp;&nbsp;');
-  const imgWrap = document.getElementById('replayImgWrap');
-  document.getElementById('markupTools').classList.toggle('show', !!img);
-  document.getElementById('markupHint').textContent = img ? 'Choose a tool, then draw directly on the chart. Markups save with this trade.' : '';
-  imgWrap.classList.toggle('markup-stage', !!img);
-  if(img){
-    const replayImage = imgWrap.querySelector('img');
-    const connectMarkup = ()=> setupMarkupCanvas(replayImage);
-    replayImage.addEventListener('load', connectMarkup, {once:true});
-    if(replayImage.complete && replayImage.naturalWidth) connectMarkup();
-  }
   document.getElementById('replayNotes').value = r.notes || '';
   document.getElementById('replayNoteSaved').textContent = '';
   document.getElementById('replayModalOverlay').classList.add('open');
@@ -2181,14 +2275,14 @@ let markupState = { tool:'pen', color:MARKUP_COLORS[0], commands:[], draft:null,
 function setMarkupTool(tool){ markupState.tool=tool;document.querySelectorAll('[data-markup-tool]').forEach(b=>b.classList.toggle('active',b.dataset.markupTool===tool)); }
 function drawMarkupColors(){const el=document.getElementById('markupColors');el.innerHTML=MARKUP_COLORS.map(c=>`<button type="button" class="markup-color ${c===markupState.color?'active':''}" style="background:${c}" aria-label="Select markup color" onclick="setMarkupColor('${c}')"></button>`).join('');}
 function setMarkupColor(color){markupState.color=color;drawMarkupColors();}
-function setupMarkupCanvas(image){
-  if(currentReplayIdx===null)return;markupState.commands=Array.isArray(rows[currentReplayIdx].markup)?rows[currentReplayIdx].markup:[];markupState.draft=null;
-  const wrap=document.getElementById('replayImgWrap'),old=wrap.querySelector('.markup-canvas');if(old)old.remove();const canvas=document.createElement('canvas');canvas.className='markup-canvas';wrap.appendChild(canvas);markupState.canvas=canvas;
+function setupMarkupCanvas(wrap){
+  if(currentReplayIdx===null||!wrap)return;markupState.commands=Array.isArray(rows[currentReplayIdx].markup)?rows[currentReplayIdx].markup:[];markupState.draft=null;
+  const old=wrap.querySelector('.markup-canvas');if(old)old.remove();const canvas=document.createElement('canvas');canvas.className='markup-canvas';wrap.appendChild(canvas);markupState.canvas=canvas;
   const resize=()=>{const r=canvas.getBoundingClientRect(),d=window.devicePixelRatio||1;canvas.width=Math.max(1,Math.round(r.width*d));canvas.height=Math.max(1,Math.round(r.height*d));renderMarkup();};new ResizeObserver(resize).observe(canvas);resize();drawMarkupColors();setMarkupTool(markupState.tool);
   const point=e=>{const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height};};
-  canvas.onpointerdown=e=>{const p=point(e);if(markupState.tool==='text'){const text=prompt('Add a chart note:');if(text&&text.trim()){markupState.commands.push({type:'text',x:p.x,y:p.y,text:text.trim(),color:markupState.color});saveMarkup();}return;}canvas.setPointerCapture(e.pointerId);markupState.draft=markupState.tool==='pen'?{type:'pen',points:[p],color:markupState.color}:{type:markupState.tool,start:p,end:p,color:markupState.color};renderMarkup();};
-  canvas.onpointermove=e=>{if(!markupState.draft)return;const p=point(e);if(markupState.draft.type==='pen')markupState.draft.points.push(p);else markupState.draft.end=p;renderMarkup();};
-  canvas.onpointerup=e=>{if(!markupState.draft)return;markupState.commands.push(markupState.draft);markupState.draft=null;try{canvas.releasePointerCapture(e.pointerId)}catch(_){}saveMarkup();};
+  canvas.onpointerdown=e=>{e.stopPropagation();const p=point(e);if(markupState.tool==='text'){const text=prompt('Add a chart note:');if(text&&text.trim()){markupState.commands.push({type:'text',x:p.x,y:p.y,text:text.trim(),color:markupState.color});saveMarkup();}return;}canvas.setPointerCapture(e.pointerId);markupState.draft=markupState.tool==='pen'?{type:'pen',points:[p],color:markupState.color}:{type:markupState.tool,start:p,end:p,color:markupState.color};renderMarkup();};
+  canvas.onpointermove=e=>{e.stopPropagation();if(!markupState.draft)return;const p=point(e);if(markupState.draft.type==='pen')markupState.draft.points.push(p);else markupState.draft.end=p;renderMarkup();};
+  canvas.onpointerup=e=>{e.stopPropagation();if(!markupState.draft)return;markupState.commands.push(markupState.draft);markupState.draft=null;try{canvas.releasePointerCapture(e.pointerId)}catch(_){}saveMarkup();};
 }
 function renderMarkup(){const c=markupState.canvas;if(!c)return;const ctx=c.getContext('2d'),w=c.width,h=c.height,d=window.devicePixelRatio||1;ctx.clearRect(0,0,w,h);[...markupState.commands,...(markupState.draft?[markupState.draft]:[])].forEach(cmd=>drawMarkupCommand(ctx,cmd,w,h,d));}
 function drawMarkupCommand(ctx,cmd,w,h,d){const pt=p=>({x:p.x*w,y:p.y*h});ctx.save();ctx.strokeStyle=cmd.color;ctx.fillStyle=cmd.color;ctx.lineWidth=2.5*d;ctx.lineCap='round';ctx.lineJoin='round';if(cmd.type==='pen'&&cmd.points.length){ctx.beginPath();cmd.points.forEach((p,i)=>{const q=pt(p);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.stroke();}if(cmd.type==='rect'){const a=pt(cmd.start),b=pt(cmd.end);ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y);}if(cmd.type==='arrow'){const a=pt(cmd.start),b=pt(cmd.end),angle=Math.atan2(b.y-a.y,b.x-a.x);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-11*d*Math.cos(angle-Math.PI/6),b.y-11*d*Math.sin(angle-Math.PI/6));ctx.lineTo(b.x-11*d*Math.cos(angle+Math.PI/6),b.y-11*d*Math.sin(angle+Math.PI/6));ctx.closePath();ctx.fill();}if(cmd.type==='text'){const a=pt(cmd);ctx.font=`${15*d}px Space Grotesk, sans-serif`;ctx.fillText(cmd.text,a.x,a.y);}ctx.restore();}
