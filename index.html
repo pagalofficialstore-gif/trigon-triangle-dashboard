@@ -218,6 +218,23 @@
   .econ-gold-tag.econ-gold-neutral{color:var(--muted);}
   .econ-gold-tag.econ-gold-watch{color:var(--amber);}
   @media (max-width:720px){ .econ-grid{grid-template-columns:1fr;gap:18px;} .econ-vals{display:none;} }
+  .tools-news-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+  @media (max-width:900px){ .tools-news-grid{grid-template-columns:1fr;gap:18px;} }
+  .tools-event-card{border:1px solid var(--border2);border-radius:8px;padding:14px 16px;margin-bottom:14px;background:var(--panel2);}
+  .tools-event-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px;}
+  .tools-event-time{font-size:11px;color:var(--muted);flex-shrink:0;}
+  .tools-event-ccy{font-size:11px;font-weight:700;color:var(--text2);flex-shrink:0;}
+  .tools-event-title{font-size:14.5px;font-weight:700;flex:1;min-width:0;}
+  .tools-event-vals{font-size:11px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .tools-event-explainer{font-size:12px;color:var(--text2);line-height:1.5;margin-bottom:10px;}
+  .tools-impact-row{display:grid;grid-template-columns:1fr;gap:8px;}
+  .tools-impact-item{border-top:1px solid var(--border2);padding-top:8px;}
+  .tools-impact-label{font-size:11.5px;font-weight:700;letter-spacing:.02em;}
+  .tools-impact-label.impact-bullish{color:var(--green);}
+  .tools-impact-label.impact-bearish{color:var(--red);}
+  .tools-impact-label.impact-neutral{color:var(--muted);}
+  .tools-impact-label.impact-watch{color:var(--amber);}
+  .tools-impact-note{font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.45;}
   a.link{color:var(--accent);text-decoration:none;}
 
   /* Page nav (Dashboard / Backtest) */
@@ -393,6 +410,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
         </div>
       </div>
     </div>
+    <button class="ghost" id="toolsNavBtn" onclick="toggleToolsPage()">🛠 TOOLS</button>
     <div class="user-status">
       <select id="strategySwitcher" class="strategy-switcher" onchange="switchStrategy(this.value)"></select>
       <span id="loggedInEmail"></span>
@@ -536,6 +554,33 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
 
   <div class="card-list" id="cardList"></div>
   <div id="emptyStateMobile" class="empty" style="display:none;background:var(--panel);border:1px solid var(--border);border-radius:6px;">No setups match these filters.</div>
+</main>
+
+<!-- Tools page: detailed high-impact news + per-instrument market impact reads -->
+<main id="toolsPage" class="page" style="display:none;">
+  <div class="card" style="margin-bottom:22px;">
+    <div class="econ-header">
+      <h3 style="margin:0;">Tools &mdash; Detailed News &amp; Market Impact</h3>
+      <div class="econ-meta">
+        <select id="toolsCcyFilter" class="econ-ccy-filter" onchange="onToolsCcyChange(this.value)">
+          <option value="USD">USD</option>
+        </select>
+        <span id="toolsUpdated"></span>
+        <button class="ghost" onclick="loadEconomicCalendar()">&#8635; Refresh</button>
+      </div>
+    </div>
+    <div class="tools-news-grid">
+      <div>
+        <div class="econ-daylabel">Today &middot; <span id="toolsTodayDate"></span></div>
+        <div id="toolsToday"><div class="econ-empty">Loading&hellip;</div></div>
+      </div>
+      <div>
+        <div class="econ-daylabel">Tomorrow &middot; <span id="toolsTomorrowDate"></span></div>
+        <div id="toolsTomorrow"><div class="econ-empty">Loading&hellip;</div></div>
+      </div>
+    </div>
+    <div class="hint">Same high-impact ("red folder") Forex Factory feed as the main dashboard card, shown here with full detail: what each release actually measures, plus its automated read on Gold, EUR/USD and BTC/USD. GBP/JPY is a pure cross pair with no direct USD linkage, so it's intentionally left unscored rather than forcing a relationship that isn't really there. Not certified financial advice — refreshes automatically every 5 minutes alongside the main dashboard.</div>
+  </div>
 </main>
 
 <!-- Add Setup from Chart Link modal -->
@@ -1562,6 +1607,143 @@ function econRowHtml(e){
   </div>`;
 }
 
+/* ===================== Tools page: detailed news + per-instrument impact =====================
+ * Same underlying feed (econAllEvents) as the compact "Red Folder News" card, rendered as
+ * full detail cards: a plain-English explainer of what the release actually measures, plus
+ * a visible (not just hover-tooltip) read on Gold, EUR/USD and BTC/USD. GBP/JPY is skipped —
+ * it's a pure cross with no direct USD linkage, so scoring it here would be forcing a
+ * relationship that isn't real. */
+const EVENT_EXPLAINERS = [
+  { keys:['non-farm','nonfarm','payroll'], text:'Measures the net number of jobs added or lost across the economy (excluding farm work). One of the single most-watched labor market releases — a strong beat suggests a resilient economy (often currency-positive), a big miss suggests cooling growth.' },
+  { keys:['unemployment rate'], text:'The share of the labor force that is jobless and actively looking for work. A falling rate signals a tightening labor market; a rising rate signals slack building up in the economy.' },
+  { keys:['jobless claims','unemployment claims','continuing claims'], text:'A weekly count of people filing for unemployment benefits. It is timelier than the monthly jobs report, so it is watched as an early read on whether the labor market is holding up or cracking.' },
+  { keys:['cpi'], text:'Consumer Price Index — tracks how much prices for a basket of everyday goods and services have changed. The primary gauge of inflation that central banks watch when setting interest rates.' },
+  { keys:['ppi'], text:'Producer Price Index — tracks price changes at the wholesale/factory-gate level before they reach consumers. Often treated as an early signal for where consumer inflation (CPI) is headed next.' },
+  { keys:['retail sales'], text:'Measures the total value of sales at retail stores. A direct read on consumer spending, which makes up the majority of economic activity in most developed economies.' },
+  { keys:['gdp'], text:'Gross Domestic Product — the broadest single measure of a country\'s total economic output. Quarterly GDP prints are the headline scorecard for whether an economy is growing, stagnating, or contracting.' },
+  { keys:['ism manufacturing','ism services','ism non-manufacturing','pmi'], text:'A survey-based index of business activity. Above 50 signals expansion, below 50 signals contraction — watched as a timely, forward-looking read on the economy that predates official output data.' },
+  { keys:['consumer confidence','consumer sentiment'], text:'A survey of how households feel about the current and future economy. Confident consumers tend to spend more, so this is watched as a leading indicator for future retail activity.' },
+  { keys:['durable goods'], text:'Tracks orders for goods built to last three years or more (machinery, vehicles, electronics). A proxy for business investment appetite — big-ticket orders signal confidence in future demand.' },
+  { keys:['housing starts','building permits'], text:'Tracks new home construction activity. Housing is a large, interest-rate-sensitive slice of the economy, so this is watched as an early signal of how rate changes are filtering through to real activity.' },
+  { keys:['industrial production'], text:'Measures output from factories, mines and utilities. A direct read on the health of the industrial/manufacturing side of the economy.' },
+  { keys:['fed funds rate','interest rate decision','fomc','rate decision','monetary policy statement','press conference'], text:'The central bank\'s benchmark interest rate decision, plus its accompanying statement/press conference. Markets react heavily to the tone and forward guidance here, often more than to the rate move itself — a hawkish tone (leaning toward higher rates) typically supports the currency, a dovish tone typically weighs on it.' }
+];
+function getEventExplainer(title){
+  const t = (title||'').toLowerCase();
+  const hit = EVENT_EXPLAINERS.find(x=>x.keys.some(k=>t.includes(k)));
+  return hit ? hit.text : 'A high-impact ("red folder") release watched closely for signs of economic strength or weakness — surprises relative to forecast tend to move the currency and any assets priced against it.';
+}
+
+function classifyImpactForInstrument(e, instrumentCfg){
+  const label = instrumentCfg.label;
+  if(!instrumentCfg.newsOverlay){
+    return { label:'No direct USD link', cls:'watch', note: label + ' is a pure cross pair with no direct USD linkage, so this event does not have a clean fundamental read here.' };
+  }
+  const title = (e.title||'').toLowerCase();
+  if(GOLD_WATCH_KEYWORDS.some(k=>title.includes(k))){
+    return { label:'Watch for ' + label, cls:'watch', note: label + ' tends to react to the tone and forward guidance from this event, not just one number.' };
+  }
+  const direct = GOLD_DIRECT_KEYWORDS.some(k=>title.includes(k));
+  const actual = parseEconNum(e.actual);
+  const forecast = parseEconNum(e.forecast);
+  const previous = parseEconNum(e.previous);
+  if(actual !== null && forecast !== null){
+    if(actual === forecast) return { label:'Confirmed Neutral for ' + label, cls:'neutral', note:'Came in line with forecast — limited surprise, so limited market reaction expected.' };
+    const beat = actual > forecast;
+    const positive = direct ? beat : !beat;
+    return positive
+      ? { label:'Confirmed Positive for ' + label, cls:'bullish', note:(beat?'Beat':'Missed')+' forecast — historically a headwind for the dollar, which tends to support '+label+'.' }
+      : { label:'Confirmed Negative for ' + label, cls:'bearish', note:(beat?'Beat':'Missed')+' forecast — historically strengthens the dollar, which tends to weigh on '+label+'.' };
+  }
+  if(forecast !== null && previous !== null){
+    if(forecast === previous) return { label:'Leaning Neutral for ' + label, cls:'neutral', note:'Forecast is in line with the previous reading — limited surprise expected if it holds.' };
+    const expectedBeat = forecast > previous;
+    const positive = direct ? expectedBeat : !expectedBeat;
+    return positive
+      ? { label:'Leaning Positive for ' + label, cls:'bullish', note:'Forecast is '+(expectedBeat?'above':'below')+' the previous reading — pre-release read, historically a headwind for the dollar if it holds. Updates to a Confirmed tag once the actual prints.' }
+      : { label:'Leaning Negative for ' + label, cls:'bearish', note:'Forecast is '+(expectedBeat?'above':'below')+' the previous reading — pre-release read, historically supportive for the dollar if it holds. Updates to a Confirmed tag once the actual prints.' };
+  }
+  return { label:'Pending', cls:'watch', note:'Not enough data yet (no forecast or previous reading) to read this one for '+label+'.' };
+}
+
+function toolsEventDetailHtml(e){
+  const d = new Date(e.date);
+  const time = isNaN(d.getTime()) ? '—' : d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  const vals = [];
+  if(e.actual) vals.push(`Actual: ${escapeHtml(e.actual)}`);
+  if(e.forecast) vals.push(`Forecast: ${escapeHtml(e.forecast)}`);
+  if(e.previous) vals.push(`Previous: ${escapeHtml(e.previous)}`);
+  const impacts = ['gold','eurusd','btcusd'].map(k=>{
+    const cfg = OUTLOOK_INSTRUMENTS[k];
+    const imp = classifyImpactForInstrument(e, cfg);
+    return `<div class="tools-impact-item">
+      <div class="tools-impact-label impact-${imp.cls}">${cfg.icon} ${escapeHtml(imp.label)}</div>
+      <div class="tools-impact-note">${escapeHtml(imp.note)}</div>
+    </div>`;
+  }).join('');
+  return `<div class="tools-event-card">
+    <div class="tools-event-top">
+      <span class="tools-event-time">${time}</span>
+      <span class="tools-event-ccy">${escapeHtml(e.country||'—')}</span>
+      <span class="tools-event-title">${escapeHtml(e.title||'—')}</span>
+    </div>
+    ${vals.length ? `<div class="tools-event-vals">${vals.join(' &middot; ')}</div>` : ''}
+    <div class="tools-event-explainer">${escapeHtml(getEventExplainer(e.title))}</div>
+    <div class="tools-impact-row">${impacts}</div>
+  </div>`;
+}
+
+let toolsCurrency = 'USD';
+function populateToolsCcyFilter(){
+  const sel = document.getElementById('toolsCcyFilter');
+  if(!sel) return;
+  const cur = sel.value || toolsCurrency;
+  const currencies = [...new Set(
+    econAllEvents.filter(e=>e.impact==='High').map(e=>(e.country||'').toUpperCase()).filter(Boolean)
+  )].sort();
+  const opts = ['USD', ...currencies.filter(c=>c!=='USD')];
+  sel.innerHTML = '<option value="ALL">All Currencies</option>' + opts.map(c=>`<option value="${c}">${c}</option>`).join('');
+  sel.value = [...sel.options].some(o=>o.value===cur) ? cur : 'USD';
+  toolsCurrency = sel.value;
+}
+function onToolsCcyChange(v){
+  toolsCurrency = v;
+  renderToolsEvents();
+}
+function renderToolsEvents(){
+  if(!document.getElementById('toolsToday')) return;
+  const now = new Date();
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
+  document.getElementById('toolsTodayDate').textContent = now.toLocaleDateString([], { month:'short', day:'numeric' });
+  document.getElementById('toolsTomorrowDate').textContent = tomorrow.toLocaleDateString([], { month:'short', day:'numeric' });
+
+  const highImpact = econAllEvents.filter(e => e.impact === 'High' && (toolsCurrency==='ALL' || (e.country||'').toUpperCase()===toolsCurrency));
+  const byTime = (a,b)=> new Date(a.date) - new Date(b.date);
+  const todayEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), now)).sort(byTime);
+  const tomorrowEvents = highImpact.filter(e => isSameLocalDay(new Date(e.date), tomorrow)).sort(byTime);
+
+  const ccyLabel = toolsCurrency==='ALL' ? '' : toolsCurrency + ' ';
+  document.getElementById('toolsToday').innerHTML = todayEvents.length
+    ? todayEvents.map(toolsEventDetailHtml).join('')
+    : `<div class="econ-empty">No high-impact ${ccyLabel}events today.</div>`;
+  document.getElementById('toolsTomorrow').innerHTML = tomorrowEvents.length
+    ? tomorrowEvents.map(toolsEventDetailHtml).join('')
+    : `<div class="econ-empty">No high-impact ${ccyLabel}events tomorrow.</div>`;
+  const updatedEl = document.getElementById('econUpdated');
+  const toolsUpdatedEl = document.getElementById('toolsUpdated');
+  if(toolsUpdatedEl && updatedEl) toolsUpdatedEl.textContent = updatedEl.textContent;
+}
+
+function toggleToolsPage(){
+  const toolsPage = document.getElementById('toolsPage');
+  const onTools = toolsPage.style.display === 'block';
+  document.getElementById('dashboardPage').style.display = onTools ? 'block' : 'none';
+  toolsPage.style.display = onTools ? 'none' : 'block';
+  document.getElementById('toolsNavBtn').textContent = onTools ? '🛠 TOOLS' : '📊 DASHBOARD';
+  if(!onTools){ populateToolsCcyFilter(); renderToolsEvents(); }
+  window.scrollTo(0,0);
+}
+
 let econAllEvents = [];
 let econCurrency = 'USD';
 
@@ -1601,6 +1783,10 @@ function renderEconEvents(){
   document.getElementById('econTomorrow').innerHTML = tomorrowEvents.length
     ? tomorrowEvents.map(econRowHtml).join('')
     : `<div class="econ-empty">No high-impact ${ccyLabel}events tomorrow.</div>`;
+
+  if(document.getElementById('toolsPage') && document.getElementById('toolsPage').style.display === 'block'){
+    renderToolsEvents();
+  }
 }
 
 /* Stale-while-revalidate cache: saves the last successful load to localStorage so a
