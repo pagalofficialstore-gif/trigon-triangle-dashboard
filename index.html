@@ -62,6 +62,29 @@
   .stat .v{font-size:23px;font-weight:700;}
   .stat .l{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-top:5px;}
 
+  .analytics-section{margin-bottom:8px;}
+  .analytics-row{display:grid;gap:16px;margin-bottom:16px;}
+  .analytics-row.cols-3{grid-template-columns:repeat(3,1fr);}
+  .analytics-row.cols-2{grid-template-columns:1fr 1fr;}
+  @media (max-width:900px){ .analytics-row.cols-3{grid-template-columns:1fr;} .analytics-row.cols-2{grid-template-columns:1fr;} }
+  .analytics-card{background:var(--panel);border:1px solid var(--border2);border-radius:14px;padding:20px 22px;min-width:0;}
+  .analytics-card h4{margin:0 0 12px;font-size:12.5px;font-weight:600;color:var(--muted);text-transform:none;letter-spacing:0;}
+  .analytics-top-row{display:flex;align-items:center;justify-content:space-between;gap:14px;}
+  .analytics-big-value{font-size:26px;font-weight:800;color:var(--text2);}
+  .analytics-sub-text{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;}
+  .win-ring-wrap{position:relative;width:78px;height:78px;flex-shrink:0;}
+  .win-ring-wrap canvas{position:relative;z-index:1;}
+  .streak-dots{display:flex;gap:5px;margin-top:14px;}
+  .streak-dot{width:16px;height:24px;border-radius:4px;background:var(--red);}
+  .streak-dot.empty{background:transparent;border:1px dashed var(--border2);}
+  .analytics-chart-wrap{position:relative;height:220px;}
+  .analytics-empty{color:var(--muted);font-size:12.5px;padding:30px 10px;text-align:center;}
+  .session-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border2);font-size:12.5px;}
+  .session-row:last-child{border-bottom:none;}
+  .session-row .name{color:var(--text2);font-weight:600;}
+  .session-row .time{color:var(--muted);font-size:11px;margin-left:8px;}
+  .session-row .pct{font-weight:800;font-size:14px;}
+
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px;}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:18px;min-width:0;}
   .card h3{margin:0 0 14px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
@@ -463,6 +486,52 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
     <div class="hint" id="outlookHint">One combined, automated verdict — moving averages, momentum, RSI, range position and volume (the closest free proxy to order flow; no free source publishes real bid/ask depth), cross-checked against a second independent feed, plus today's high-impact USD news reads folded in where relevant. Not certified financial advice. Refreshes automatically every 5 minutes.</div>
   </div>
 
+  <div class="analytics-section">
+    <div class="analytics-row cols-3">
+      <div class="analytics-card">
+        <h4>Win rate</h4>
+        <div class="analytics-top-row">
+          <div>
+            <div class="analytics-big-value" id="winRateBig">—</div>
+            <div class="analytics-sub-text" id="winRateSub"></div>
+          </div>
+          <div class="win-ring-wrap"><canvas id="winRateRing"></canvas></div>
+        </div>
+      </div>
+      <div class="analytics-card">
+        <h4>Lose streak</h4>
+        <div class="analytics-big-value" id="loseStreakBig">—</div>
+        <div class="analytics-sub-text" id="loseStreakSub"></div>
+        <div class="streak-dots" id="loseStreakDots"></div>
+      </div>
+      <div class="analytics-card">
+        <h4>Break-even count</h4>
+        <div class="analytics-big-value" id="breakEvenBig">—</div>
+        <div class="analytics-sub-text" id="breakEvenSub"></div>
+      </div>
+    </div>
+    <div class="analytics-row cols-2">
+      <div class="analytics-card">
+        <h4>All time win-rate trend</h4>
+        <div class="analytics-chart-wrap" id="winRateTrendWrap"><canvas id="winRateTrendChart"></canvas></div>
+      </div>
+      <div class="analytics-card">
+        <h4>All time won vs lost</h4>
+        <div class="analytics-chart-wrap" id="wonLostWrap"><canvas id="wonLostChart"></canvas></div>
+      </div>
+    </div>
+    <div class="analytics-row cols-2">
+      <div class="analytics-card">
+        <h4>Hourly win-rate</h4>
+        <div class="analytics-chart-wrap" id="hourlyWinRateWrap"><canvas id="hourlyWinRateChart"></canvas></div>
+      </div>
+      <div class="analytics-card">
+        <h4>Session win-rate</h4>
+        <div id="sessionWinRateWrap"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="stats" id="stats"></div>
 
   <div class="card" style="margin-bottom:22px;">
@@ -613,6 +682,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
     <div class="analyzer-form" id="a_form" style="display:none;">
       <div class="form-grid">
         <div class="field"><label>Date</label><input type="date" id="a_date"></div>
+        <div class="field"><label>Time (optional)</label><input type="time" id="a_time"></div>
         <div class="field"><label>Timeframe<span class="badge-detected" id="a_tfBadge"></span></label><input type="text" id="a_timeframe" placeholder="e.g. 5 MIN" list="tfList"><datalist id="tfList"><option value="1 MIN"><option value="3 MIN"><option value="5 MIN"><option value="15 MIN"><option value="30 MIN"><option value="1H"></datalist></div>
         <div class="field" id="a_triangleTypeField"><label>Triangle Type</label>
           <select id="a_triangleType"><option value="">Select...</option><option>Triangle 1</option><option>Triangle 2</option><option>Triangle 3</option><option>Triangle 4</option></select>
@@ -680,6 +750,7 @@ th{font-family:'JetBrains Mono',monospace;background:#f7faf7;color:var(--muted);
     </div>
     <div class="form-grid">
       <div class="field"><label>Date</label><input type="date" id="e_date"></div>
+      <div class="field"><label>Time (optional)</label><input type="time" id="e_time"></div>
       <div class="field"><label>Timeframe</label><input type="text" id="e_timeframe" placeholder="e.g. 5 MIN" list="tfList"></div>
       <div class="field" id="e_triangleTypeField"><label>Triangle Type</label>
         <select id="e_triangleType"><option value="">Select...</option><option>Triangle 1</option><option>Triangle 2</option><option>Triangle 3</option><option>Triangle 4</option></select>
@@ -1456,10 +1527,10 @@ function renderDisplayControls(){
   document.getElementById('themeLightBtn').classList.toggle('active', prefs.theme==='light');
   applyPrefsToDom();
 }
-function setAccent(c){ prefs.accent = c; persistPrefs(); renderDisplayControls(); renderEquityChart(); renderBreakdown(); }
+function setAccent(c){ prefs.accent = c; persistPrefs(); renderDisplayControls(); renderEquityChart(); renderBreakdown(); renderAnalyticsSection(); }
 function setDensity(d){ prefs.density = d; persistPrefs(); renderDisplayControls(); }
 function setThumbs(v){ prefs.showThumbs = v; persistPrefs(); applyPrefsToDom(); }
-function setTheme(t){ prefs.theme = t; persistPrefs(); renderDisplayControls(); renderEquityChart(); }
+function setTheme(t){ prefs.theme = t; persistPrefs(); renderDisplayControls(); renderEquityChart(); renderAnalyticsSection(); }
 function cssVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function applyPrefsToDom(){
   document.documentElement.setAttribute('data-theme', prefs.theme || 'dark');
@@ -2172,6 +2243,275 @@ function renderStats(){
   `;
 }
 
+/* ===================== New performance analytics (win-rate/streak/trend/session) =====================
+ * All derived honestly from real logged data — no fabricated numbers. Win rate, lose streak and
+ * break-even count come from existing outcome/r fields. The two time-of-day widgets (hourly and
+ * session win-rate) need an actual time-of-day per trade, which the journal didn't capture before —
+ * an optional "Time" field was added to the Add/Edit Setup forms for this. Until setups have a time
+ * logged, those two widgets show an honest empty state rather than guessing. */
+let winRateRingChart = null;
+let winRateTrendChartInstance = null;
+let wonLostChartInstance = null;
+let hourlyWinRateChartInstance = null;
+
+function computeLoseStreak(data){
+  const closed = [...data].filter(r=>r.outcome==='win'||r.outcome==='loss').sort((a,b)=> new Date(b.date)-new Date(a.date));
+  let streak = 0;
+  for(const r of closed){
+    if(r.outcome==='loss') streak++;
+    else break;
+  }
+  return streak;
+}
+
+function computeBreakEvenCount(data){
+  return data.filter(r => (r.outcome==='win'||r.outcome==='loss') && r.r!==null && r.r!==undefined && !isNaN(r.r) && Math.abs(r.r) < 1e-9).length;
+}
+
+function centerTextPlugin(getText, getColor){
+  return {
+    id: 'centerText',
+    afterDraw(chart){
+      const { ctx, chartArea } = chart;
+      if(!chartArea) return;
+      const cx = (chartArea.left + chartArea.right) / 2;
+      const cy = (chartArea.top + chartArea.bottom) / 2;
+      ctx.save();
+      ctx.font = "700 15px 'Space Grotesk', sans-serif";
+      ctx.fillStyle = getColor();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(getText(), cx, cy);
+      ctx.restore();
+    }
+  };
+}
+
+function renderWinRateCard(){
+  const s = computeStats(rows);
+  const winColor = s.winRate>=50 ? (cssVar('--green')||'#34d399') : (cssVar('--red')||'#fb5a75');
+  document.getElementById('winRateBig').textContent = s.winRate.toFixed(2) + '%';
+  document.getElementById('winRateBig').style.color = winColor;
+  document.getElementById('winRateSub').textContent = `${s.wins + s.losses} of ${s.total} setups logged were closed, ${s.wins} of them profitable.`;
+
+  const canvas = document.getElementById('winRateRing');
+  const ctx = canvas.getContext('2d');
+  if(winRateRingChart) winRateRingChart.destroy();
+  const muted = cssVar('--border2') || '#262a34';
+  const resolvedTotal = s.wins + s.losses;
+  const data = resolvedTotal ? [s.wins, s.losses] : [1];
+  const colors = resolvedTotal ? [winColor, muted] : [muted];
+  winRateRingChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{ datasets:[{ data, backgroundColor: colors, borderWidth:0 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'72%',
+      plugins:{ legend:{display:false}, tooltip:{enabled:false} }
+    },
+    plugins:[ centerTextPlugin(()=> Math.round(s.winRate)+'%', ()=> cssVar('--text2')||'#f4f5f7') ]
+  });
+}
+
+function renderLoseStreakCard(){
+  const streak = computeLoseStreak(rows);
+  const closed = rows.filter(r=>r.outcome==='win'||r.outcome==='loss');
+  document.getElementById('loseStreakBig').textContent = streak + (streak===1 ? ' trade' : ' trades');
+  document.getElementById('loseStreakSub').textContent = closed.length
+    ? `Your current run: ${streak} loss${streak===1?'':'es'} in a row as of your most recent closed trade.`
+    : 'No closed trades yet.';
+  const maxDots = 5;
+  const dots = [];
+  for(let i=0;i<maxDots;i++){
+    dots.push(`<div class="streak-dot ${i < Math.min(streak,maxDots) ? '' : 'empty'}"></div>`);
+  }
+  document.getElementById('loseStreakDots').innerHTML = dots.join('');
+}
+
+function renderBreakEvenCard(){
+  const closed = rows.filter(r=>r.outcome==='win'||r.outcome==='loss');
+  const be = computeBreakEvenCount(rows);
+  const pct = closed.length ? (be/closed.length*100) : 0;
+  document.getElementById('breakEvenBig').textContent = `${be} out of ${closed.length}`;
+  document.getElementById('breakEvenSub').textContent = closed.length
+    ? `${be} out of ${closed.length} trades closed at break-even (0R). That's ${pct.toFixed(0)}% of all closed trades.`
+    : 'No closed trades yet.';
+}
+
+function monthKey(d){ const dt = new Date(d); return isNaN(dt.getTime()) ? null : `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}`; }
+function monthLabel(key){ const [y,m] = key.split('-').map(Number); return new Date(y, m-1, 1).toLocaleDateString([], { month:'short' }); }
+
+function renderWinRateTrendChart(){
+  const wrap = document.getElementById('winRateTrendWrap');
+  const closed = [...rows].filter(r=>r.outcome==='win'||r.outcome==='loss').sort((a,b)=> new Date(a.date)-new Date(b.date));
+  if(winRateTrendChartInstance){ winRateTrendChartInstance.destroy(); winRateTrendChartInstance = null; }
+  if(!closed.length){
+    wrap.innerHTML = '<div class="analytics-empty">Log some win/loss trades to see your win-rate trend.</div>';
+    return;
+  }
+  if(!document.getElementById('winRateTrendChart')){ wrap.innerHTML = '<canvas id="winRateTrendChart"></canvas>'; }
+  const months = [...new Set(closed.map(r=>monthKey(r.date)).filter(Boolean))];
+  let wins=0, total=0;
+  const points = months.map(mk=>{
+    const inMonth = closed.filter(r=>monthKey(r.date)===mk);
+    wins += inMonth.filter(r=>r.outcome==='win').length;
+    total += inMonth.length;
+    return { x: monthLabel(mk), y: total ? (wins/total*100) : 0 };
+  });
+  const ctx = document.getElementById('winRateTrendChart').getContext('2d');
+  const accent = prefs.accent || '#ff6a3d';
+  const gridColor = cssVar('--chart-grid') || '#1e212a';
+  const muted = cssVar('--muted') || '#767e8f';
+  const panelColor = cssVar('--panel') || '#14161c';
+  const border2 = cssVar('--border2') || '#262a34';
+  const text2 = cssVar('--text2') || '#f4f5f7';
+  winRateTrendChartInstance = new Chart(ctx, {
+    type:'line',
+    data:{ labels: points.map(p=>p.x), datasets:[{
+      label:'Win rate', data: points.map(p=>p.y),
+      borderColor: accent, backgroundColor:'transparent', borderWidth:2.5,
+      tension:.3, pointRadius:2, pointHoverRadius:5, pointBackgroundColor: accent
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{ ticks:{color:muted}, grid:{display:false} },
+        y:{ min:0, max:100, ticks:{color:muted, callback:(v)=>v+'%'}, grid:{color:gridColor} }
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{ backgroundColor:panelColor, borderColor:border2, borderWidth:1, titleColor:text2, bodyColor:cssVar('--text')||'#c7cbd4',
+          callbacks:{ label:(item)=> `Win rate: ${item.parsed.y.toFixed(1)}%` } }
+      }
+    }
+  });
+}
+
+function renderWonLostChart(){
+  const wrap = document.getElementById('wonLostWrap');
+  const closed = [...rows].filter(r=>r.outcome==='win'||r.outcome==='loss').sort((a,b)=> new Date(a.date)-new Date(b.date));
+  if(wonLostChartInstance){ wonLostChartInstance.destroy(); wonLostChartInstance = null; }
+  if(!closed.length){
+    wrap.innerHTML = '<div class="analytics-empty">Log some win/loss trades to see this breakdown.</div>';
+    return;
+  }
+  if(!document.getElementById('wonLostChart')){ wrap.innerHTML = '<canvas id="wonLostChart"></canvas>'; }
+  const months = [...new Set(closed.map(r=>monthKey(r.date)).filter(Boolean))];
+  const wonData = months.map(mk=> closed.filter(r=>monthKey(r.date)===mk && r.outcome==='win').length);
+  const lostData = months.map(mk=> closed.filter(r=>monthKey(r.date)===mk && r.outcome==='loss').length);
+  const ctx = document.getElementById('wonLostChart').getContext('2d');
+  const green = cssVar('--green') || '#34d399';
+  const red = cssVar('--red') || '#fb5a75';
+  const muted = cssVar('--muted') || '#767e8f';
+  const gridColor = cssVar('--chart-grid') || '#1e212a';
+  const panelColor = cssVar('--panel') || '#14161c';
+  const border2 = cssVar('--border2') || '#262a34';
+  const text2 = cssVar('--text2') || '#f4f5f7';
+  wonLostChartInstance = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: months.map(monthLabel), datasets:[
+      { label:'Won', data: wonData, backgroundColor: green, borderRadius:3 },
+      { label:'Lost', data: lostData, backgroundColor: red, borderRadius:3 }
+    ]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{ ticks:{color:muted}, grid:{display:false} },
+        y:{ beginAtZero:true, ticks:{color:muted, precision:0}, grid:{color:gridColor} }
+      },
+      plugins:{
+        legend:{ position:'top', labels:{ color: text2, boxWidth:10, font:{size:11} } },
+        tooltip:{ backgroundColor:panelColor, borderColor:border2, borderWidth:1, titleColor:text2, bodyColor:cssVar('--text')||'#c7cbd4' }
+      }
+    }
+  });
+}
+
+function parseHour(timeStr){
+  if(!timeStr) return null;
+  const m = String(timeStr).match(/^(\d{1,2}):(\d{2})/);
+  if(!m) return null;
+  const h = parseInt(m[1],10);
+  return (h>=0 && h<24) ? h : null;
+}
+
+function renderHourlyWinRateChart(){
+  const wrap = document.getElementById('hourlyWinRateWrap');
+  const timed = rows.filter(r=>(r.outcome==='win'||r.outcome==='loss') && parseHour(r.time)!==null);
+  if(hourlyWinRateChartInstance){ hourlyWinRateChartInstance.destroy(); hourlyWinRateChartInstance = null; }
+  if(!timed.length){
+    wrap.innerHTML = '<div class="analytics-empty">Log a time on your setups (Add/Edit Setup &rarr; Time field) to see win-rate by hour of day.</div>';
+    return;
+  }
+  if(!document.getElementById('hourlyWinRateChart')){ wrap.innerHTML = '<canvas id="hourlyWinRateChart"></canvas>'; }
+  const hours = [...new Set(timed.map(r=>parseHour(r.time)))].sort((a,b)=>a-b);
+  const data = hours.map(h=>{
+    const inHour = timed.filter(r=>parseHour(r.time)===h);
+    const wins = inHour.filter(r=>r.outcome==='win').length;
+    return inHour.length ? (wins/inHour.length*100) : 0;
+  });
+  const ctx = document.getElementById('hourlyWinRateChart').getContext('2d');
+  const accent = prefs.accent || '#ff6a3d';
+  const muted = cssVar('--muted') || '#767e8f';
+  const gridColor = cssVar('--chart-grid') || '#1e212a';
+  const panelColor = cssVar('--panel') || '#14161c';
+  const border2 = cssVar('--border2') || '#262a34';
+  const text2 = cssVar('--text2') || '#f4f5f7';
+  hourlyWinRateChartInstance = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: hours.map(h=> String(h).padStart(2,'0')+':00'), datasets:[{
+      label:'Win rate', data, backgroundColor: accent, borderRadius:3
+    }]},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      scales:{
+        x:{ ticks:{color:muted}, grid:{display:false} },
+        y:{ min:0, max:100, ticks:{color:muted, callback:(v)=>v+'%'}, grid:{color:gridColor} }
+      },
+      plugins:{
+        legend:{display:false},
+        tooltip:{ backgroundColor:panelColor, borderColor:border2, borderWidth:1, titleColor:text2, bodyColor:cssVar('--text')||'#c7cbd4',
+          callbacks:{ label:(item)=> `Win rate: ${item.parsed.y.toFixed(1)}%` } }
+      }
+    }
+  });
+}
+
+const SESSION_BUCKETS = [
+  { key:'asian', name:'Asian Session', range:'00:00–08:00', test:(h)=> h>=0 && h<8 },
+  { key:'london', name:'London Session', range:'08:00–16:00', test:(h)=> h>=8 && h<16 },
+  { key:'ny', name:'New York Session', range:'16:00–24:00', test:(h)=> h>=16 && h<24 }
+];
+
+function renderSessionWinRate(){
+  const wrap = document.getElementById('sessionWinRateWrap');
+  const timed = rows.filter(r=>(r.outcome==='win'||r.outcome==='loss') && parseHour(r.time)!==null);
+  if(!timed.length){
+    wrap.innerHTML = '<div class="analytics-empty">Log a time on your setups (Add/Edit Setup &rarr; Time field) to see win-rate by trading session.</div>';
+    return;
+  }
+  const green = cssVar('--green') || '#34d399';
+  const red = cssVar('--red') || '#fb5a75';
+  wrap.innerHTML = SESSION_BUCKETS.map(b=>{
+    const inSession = timed.filter(r=> b.test(parseHour(r.time)));
+    if(!inSession.length){
+      return `<div class="session-row"><div><span class="name">${b.name}</span><span class="time">${b.range}</span></div><div class="pct" style="color:var(--muted)">No trades</div></div>`;
+    }
+    const wins = inSession.filter(r=>r.outcome==='win').length;
+    const pct = wins/inSession.length*100;
+    return `<div class="session-row"><div><span class="name">${b.name}</span><span class="time">${b.range}</span></div><div class="pct" style="color:${pct>=50?green:red}">${pct.toFixed(0)}% <span style="color:var(--muted);font-weight:400;font-size:11px;">(${wins}W/${inSession.length-wins}L)</span></div></div>`;
+  }).join('');
+}
+
+function renderAnalyticsSection(){
+  renderWinRateCard();
+  renderLoseStreakCard();
+  renderBreakEvenCard();
+  renderWinRateTrendChart();
+  renderWonLostChart();
+  renderHourlyWinRateChart();
+  renderSessionWinRate();
+}
+
 /* ===================== Equity curve ===================== */
 const zeroLinePlugin = {
   id: 'zeroLine',
@@ -2522,6 +2862,7 @@ function openEditModal(idx){
   if(!r) return;
   editState.idx = idx;
   document.getElementById('e_date').value = r.date || '';
+  document.getElementById('e_time').value = r.time || '';
   document.getElementById('e_timeframe').value = r.timeframe || '';
   document.getElementById('e_triangleType').value = r.triangleType || '';
   document.getElementById('e_condition').value = r.condition || '';
@@ -2557,6 +2898,7 @@ function saveEditedSetup(){
   const condition = activeProfile.showCondition ? document.getElementById('e_condition').value : null;
   if(!triangleType || (activeProfile.showCondition && !condition)){ alert(`Pick a ${activeProfile.setupTypeLabel}${activeProfile.showCondition ? ' and Condition' : ''} for this setup.`); return; }
   const date = document.getElementById('e_date').value || rows[idx].date;
+  const time = document.getElementById('e_time').value || null;
   const timeframe = document.getElementById('e_timeframe').value.trim() || null;
   const outcome = document.getElementById('e_outcome').value;
   let r = document.getElementById('e_r').value;
@@ -2574,7 +2916,7 @@ function saveEditedSetup(){
   const myMistake = activeProfile.myMistakeTag ? !!document.getElementById('e_myMistake').checked : (rows[idx].myMistake || false);
   const notes = document.getElementById('e_notes').value.trim() || null;
 
-  rows[idx] = { date, timeframe, triangleType, condition, link, code, link2, code2, link3, code3, myMistake, outcome, r: (r===null||isNaN(r))?null:r, notes };
+  rows[idx] = { date, time, timeframe, triangleType, condition, link, code, link2, code2, link3, code3, myMistake, outcome, r: (r===null||isNaN(r))?null:r, notes };
   persist();
   refreshAll();
   closeEditModal();
@@ -2682,6 +3024,7 @@ function openChartAnalyzer(){
   document.getElementById('a_ocrRaw').textContent = '';
   document.getElementById('a_form').style.display = 'none';
   document.getElementById('a_date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('a_time').value = '';
   document.getElementById('a_timeframe').value = '';
   document.getElementById('a_triangleType').value = '';
   document.getElementById('a_condition').value = '';
@@ -2826,6 +3169,7 @@ function addAnalyzedSetup(){
   if(!triangleType || (activeProfile.showCondition && !condition)){ alert(`Pick a ${activeProfile.setupTypeLabel}${activeProfile.showCondition ? ' and Condition' : ''} for this setup.`); return; }
   if(!analyzerState.code){ alert('Fetch & Analyze a chart link first before adding.'); return; }
   const date = document.getElementById('a_date').value || new Date().toISOString().slice(0,10);
+  const time = document.getElementById('a_time').value || null;
   const timeframe = document.getElementById('a_timeframe').value.trim() || null;
   const outcome = document.getElementById('a_outcome').value;
   let r = document.getElementById('a_r').value;
@@ -2840,7 +3184,7 @@ function addAnalyzedSetup(){
 
   const notes = document.getElementById('a_notes').value.trim() || null;
   rows.push({
-    date, timeframe, triangleType, condition,
+    date, time, timeframe, triangleType, condition,
     link: analyzerState.link, code: analyzerState.code,
     link2, code2, link3, code3, myMistake,
     outcome, r: (r===null || isNaN(r))?null:r, notes
@@ -2857,6 +3201,7 @@ function addAnalyzedSetup(){
 function refreshAll(){
   populateFilterOptions();
   renderStats();
+  renderAnalyticsSection();
   renderEquityChart();
   renderBreakdown();
   renderCalendar();
